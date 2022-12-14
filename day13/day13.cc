@@ -24,14 +24,7 @@ char	msg1[MAX_MSG];
 char    msg2[MAX_MSG];
 char    dummy[MAX_MSG];
 
-typedef struct msg_s {
-	vector<int>  v;		// if v[j] < 0, then list[-j - 1] is the list of lists
-	vector<struct msg_s *> list;
-} vlist;
 
-typedef vector<vlist> vl_t;
-
-typedef vector<int> *vi;
 
 stack<vector<int>>  m1;
 stack<vector<int>>  m2;
@@ -81,7 +74,64 @@ int parse(char *m, char *v, int &in)
 	return rv;
 }
 
+typedef struct msg_s {
+	int			 vi;
+	int          li;
+	vector<int>  v;		// if v[j] < 0, then list[-j - 1] is the list of lists
+	vector<struct msg_s *> list;
+	struct msg_s * prev;
+} vlist;
 
+typedef vector<vlist> vl_t;
+
+typedef vector<int> *vi;
+
+int parsex(char *m, vlist **v)
+{
+	vlist *top = new vlist;
+	vlist *curr = top;
+	vlist *prev = NULL;
+
+	while (*m && *m != '\n')
+	{
+		if (*m == '[')	
+		{
+			int  d = curr->list.size();
+			d = -d - 1;
+			curr->v.push_back(d);
+			curr->prev = prev;
+			vlist *nv = new vlist;
+			nv->prev = curr;
+			curr->list.push_back(nv);
+			curr = nv;
+		}
+		else if (*m == ']') 
+		{
+			curr = curr->prev;
+		}
+		else if (isdigit(*m))
+		{
+			int vx = *m - '0';
+			m++;
+			while (isdigit(*m))
+			{
+				vx = 10 * vx + *m - '0';
+				m++;
+			}
+			m--;
+		}
+		else if (*m == ',') // ignore
+		{
+		}
+		else
+		{
+			printf("PARSE ERROR\n");
+		}
+		m++;
+
+	}
+	return 0;
+}
 
 int getmsg(FILE *f)
 {
@@ -126,18 +176,7 @@ int solve(const char *fn, int v)
 int main()
 {
 	solve("ex.txt", 1);
-	int i = 0;
-	char v[1000];
-	int n;
-	bool done = false;
-	while(!done)
-	{
-		n = parse(msg1, v, i);
-		if (n >= 0)
-			printf("P: %s\n", v);
-		else if (n == -1)
-		    printf("N: %d\n", n);
-		else done = true;
-		
-	}
+	vlist *v;
+	parsex(msg1, &v);
+
 }
