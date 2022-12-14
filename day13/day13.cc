@@ -74,13 +74,47 @@ int parse(char *m, char *v, int &in)
 	return rv;
 }
 
+
 typedef struct msg_s {
-	int			 vi;
-	int          li;
-	vector<int>  v;		// if v[j] < 0, then list[-j - 1] is the list of lists
+	int	     		vi;
+	int      		li;
+	vector<int>		v;		// if v[j] < 0, then list[-j - 1] is the list of lists
 	vector<struct msg_s *> list;
 	struct msg_s * prev;
 } vlist;
+
+void zero_indexes(vlist *v)
+{
+	if (v == NULL) return;
+	v->vi = 0;
+	v->li = 0;
+	for (size_t i = 0; i < v->list.size(); i++)
+	    zero_indexes(v->list[i]);
+}
+
+
+void display(vlist *v, bool first_call = true)
+{
+	if (v == NULL) return;
+	bool comma = false;
+    printf("[");
+	for (size_t i = 0; i < v->v.size(); i++)
+	{
+	    int d = v->v[i];
+        if (d < 0) 
+        {
+			if (comma) printf(",");
+			display(v->list[-d-1], false);
+		}
+	    else
+	    {
+			if (comma) printf(",");
+			printf("%d", d);
+			comma = true;
+		}
+	}
+	printf("]");
+}
 
 typedef vector<vlist> vl_t;
 
@@ -90,24 +124,28 @@ int parsex(char *m, vlist **v)
 {
 	vlist *top = new vlist;
 	vlist *curr = top;
-	vlist *prev = NULL;
-
+	*v = NULL;
 	while (*m && *m != '\n')
 	{
+		//printf("%s", m);
 		if (*m == '[')	
 		{
 			int  d = curr->list.size();
 			d = -d - 1;
 			curr->v.push_back(d);
-			curr->prev = prev;
+			//curr->prev = prev;
 			vlist *nv = new vlist;
+			if (*v == NULL) *v = nv;
 			nv->prev = curr;
 			curr->list.push_back(nv);
 			curr = nv;
+			//printf("PUSH:: curr vector address %16.16lx\n", curr);
 		}
 		else if (*m == ']') 
 		{
-			curr = curr->prev;
+			if (!curr) printf("NULL curr pointer\n");
+			else curr = curr->prev;
+			//printf("POP:: curr vector address %16.16lx\n", curr);
 		}
 		else if (isdigit(*m))
 		{
@@ -118,6 +156,7 @@ int parsex(char *m, vlist **v)
 				vx = 10 * vx + *m - '0';
 				m++;
 			}
+			curr->v.push_back(vx);
 			m--;
 		}
 		else if (*m == ',') // ignore
@@ -178,5 +217,6 @@ int main()
 	solve("ex.txt", 1);
 	vlist *v;
 	parsex(msg1, &v);
-
+	printf("PARSEX:: curr vector address %16.16lx\n", (unsigned long)v);
+	display(v);
 }
