@@ -5,6 +5,7 @@
 #include <cstring>
 #include <string>
 #include <stack>
+#include <iostream>
 
 #ifdef PROBLEM
 [ [ [ [2, [],5, [] ]]], [4,3, [6,8, [8], 3, [9,2,10,4,10] ] ], [4, [ [7], [9,6],10,1,8], [9, [] ,0] ,8] ]
@@ -93,27 +94,36 @@ void zero_indexes(vlist *v)
 }
 
 
-void display(vlist *v, bool first_call = true)
+string to_ascii(vlist *v)
 {
-	if (v == NULL) return;
+	if (v == NULL) return "";
 	bool comma = false;
-    printf("[");
+    string s = "[";
 	for (size_t i = 0; i < v->v.size(); i++)
 	{
 	    int d = v->v[i];
         if (d < 0) 
         {
-			if (comma) printf(",");
-			display(v->list[-d-1], false);
+			if (comma) {s += ","; }
+			s += to_ascii(v->list[-d-1]);
+			comma = true;
 		}
 	    else
 	    {
-			if (comma) printf(",");
-			printf("%d", d);
+			if (comma) {s += ","; }
+			s += to_string(d);
 			comma = true;
 		}
 	}
-	printf("]");
+    s += "]";
+    return s;
+}
+
+
+void display(vlist *v)
+{
+	string s = to_ascii(v);
+	cout << s;
 }
 
 typedef vector<vlist> vl_t;
@@ -183,7 +193,17 @@ int getmsg(FILE *f)
 
 int compare(char *a, char *b)
 {
-	return 1;
+	vlist *av;
+	vlist *bv;
+	parsex(a, &av);
+	parsex(b, &bv);
+	string s = to_ascii(av);
+	cout << endl << s << endl;
+	if (s == a) printf("a:: SUCCESS!\n");
+	s = to_ascii(bv);
+	cout << endl << s << endl;
+	if (s == b) printf("b:: SUCCESS!\n");
+		return 1;
 }
 
 int solve(const char *fn, int v)
@@ -218,5 +238,6 @@ int main()
 	vlist *v;
 	parsex(msg1, &v);
 	printf("PARSEX:: curr vector address %16.16lx\n", (unsigned long)v);
-	display(v);
+	string s = to_ascii(v);
+	cout << endl << s << endl;
 }
