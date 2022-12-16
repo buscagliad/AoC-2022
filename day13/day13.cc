@@ -20,70 +20,32 @@
 
 using namespace std;
 
-#define MAX_MSG 100
-char	msg1[MAX_MSG];
-char    msg2[MAX_MSG];
-char    dummy[MAX_MSG];
+#define MAX_MSG 400
 
-
-
-stack<vector<int>>  m1;
-stack<vector<int>>  m2;
-
-//
-// if >= 0, its the number
-// if == -1 v is returned
-// if < -1 stop
-int parse(char *m, char *v, int &in)
-{
-	int i = 0;
-	int depth = -1;
-	int rv = -2;
-	while (m[in] && m[in] != '\n' && depth != 0)
-	{
-		if (m[in] == '[')	
-		{
-			if (depth < 0) depth = 0;
-			depth++;
-			v[i++] = m[in++];
-			rv = -1;
-		}
-		else if (m[in] == ']') 
-		{
-			depth--;
-			v[i++] = m[in++];
-			rv = -1;
-		}
-		else if (isdigit(m[in]))
-		{
-			int vx = m[in] - '0';
-			in++;
-			while (isdigit(m[in]))
-			{
-				vx = 10 * vx + m[in] - '0';
-				in++;
-			}
-			return vx;
-		}
-		else
-		{
-			v[i++] = m[in++];
-			rv = -1;
-		}
-	}
-	v[i] = 0;
-	return rv;
-}
-
+#define END_VALUE 2000
 
 typedef struct msg_s {
-	int	     		vi;
+	size_t     		vi;
 	int      		li;
 	vector<int>		v;		// if v[j] < 0, then list[-j - 1] is the list of lists
 	vector<struct msg_s *> list;
 	struct msg_s * prev;
 } vlist;
 
+bool isInt(vlist *a)
+{
+	if (a->v[a->vi] >= 0) return true;
+	return false;
+}
+
+bool isList(vlist *a)
+{
+	if (a->v[a->vi] < 0) return true;
+	return false;
+}
+
+
+	
 void zero_indexes(vlist *v)
 {
 	if (v == NULL) return;
@@ -93,8 +55,20 @@ void zero_indexes(vlist *v)
 	    zero_indexes(v->list[i]);
 }
 
+void clear(vlist *v)
+{
+	if (v == NULL) return;
+	for (size_t i = 0; i < v->list.size(); i++)
+	{
+		int d = v->v[i];
+		if (d < 0)
+			clear(v->list[-d-1]);
+	}
+	free(v);
+}
 
-string to_ascii(vlist *v)
+
+string to_ascii(vlist *v, bool display_ints = true)
 {
 	if (v == NULL) return "";
 	bool comma = false;
@@ -105,7 +79,7 @@ string to_ascii(vlist *v)
         if (d < 0) 
         {
 			if (comma) {s += ","; }
-			s += to_ascii(v->list[-d-1]);
+			s += to_ascii(v->list[-d-1], false);
 			comma = true;
 		}
 	    else
@@ -116,6 +90,7 @@ string to_ascii(vlist *v)
 		}
 	}
     s += "]";
+ 
     return s;
 }
 
@@ -133,6 +108,8 @@ typedef vector<int> *vi;
 int parsex(char *m, vlist **v)
 {
 	vlist *top = new vlist;
+	top->vi = 0;
+	top->li = 0;
 	vlist *curr = top;
 	*v = NULL;
 	while (*m && *m != '\n')
@@ -145,6 +122,8 @@ int parsex(char *m, vlist **v)
 			curr->v.push_back(d);
 			//curr->prev = prev;
 			vlist *nv = new vlist;
+			nv->vi = 0;
+			nv->li = 0;
 			if (*v == NULL) *v = nv;
 			nv->prev = curr;
 			curr->list.push_back(nv);
@@ -179,11 +158,13 @@ int parsex(char *m, vlist **v)
 		m++;
 
 	}
+	*m = 0;
 	return 0;
 }
 
-int getmsg(FILE *f)
+int getmsg(FILE *f, char *msg1, char *msg2)
 {
+	char    dummy[MAX_MSG];
 	fgets(msg1, MAX_MSG, f);
 	fgets(msg2, MAX_MSG, f);
 	fgets(dummy, MAX_MSG, f);
@@ -191,34 +172,85 @@ int getmsg(FILE *f)
 	return 1;
 }
 
+
+vlist *nextList(vlist *a)
+{
+	int d = a->vi++;
+	return a->list[-d-1];
+}
+
+int num_items(vlist *c)
+{
+	return c->v.size();
+}
+
+
+int getn(char *a, int &n)
+{
+	n = 1;
+	int s = 0;
+	s = *a++ - '0';
+	while (isdigit(*a))
+	{
+		s += 10 * s + *a++ - '0';
+		n++;
+	}
+	return s;
+}
+
 int compare(char *a, char *b)
 {
-	vlist *av;
-	vlist *bv;
-	parsex(a, &av);
-	parsex(b, &bv);
-	string s = to_ascii(av);
-	cout << endl << s << endl;
-	if (s == a) printf("a:: SUCCESS!\n");
-	s = to_ascii(bv);
-	cout << endl << s << endl;
-	if (s == b) printf("b:: SUCCESS!\n");
-		return 1;
+	if (*a == '\n') return -1;
+	if (*b == '\n') return 1;
+	// compare two lists
+	if ((*a == '[') && (*b == '['))
+	{
+		printf("Two lists %c - %c\n", *(a+1), *(b+1));
+	    return compare(a+1, b+1);
+	}
+	// compare two numbers
+	else if (isdigit(*a) && isdigit(*b))
+	{
+		int lm, rm;
+		int ln = getn(a, lm);
+		int rn = getn(b, rm);
+		if (ln > rn) return 1;
+		else if (ln < rn) return -1;
+		printf("%d == %d - getting next\n", ln, rn);
+		return compare(a+lm, b+rm);
+	}
+	// left is a number
+	else if (isdigit(*a))
+	{
+		printf("Left is a digit %d\n", *a-'0');
+		return compare(a, b+1);
+	}
+	// right is a number
+	else if (isdigit(*b))
+	{
+		printf("Left is a digit %d\n", *b-'0');
+		return compare(a+1, b);
+	}
+	return 1;
 }
 
 int solve(const char *fn, int v)
 {
 	FILE *f = fopen(fn, "r");
+	
 	int num = 0;
 	int good = 0;
 	int bad = 0;
-	while (getmsg(f))
+	int sum = 0;
+	int pair = 1;
+	char	msg1[MAX_MSG];
+	char    msg2[MAX_MSG];
+	while (getmsg(f, msg1, msg2))
 	{
-		printf("MSG1: %s", msg1);
-		printf("MSG2: %s", msg2);
 		if (compare(msg1, msg2) > 0)
 		{
 			good++; 
+			sum += pair;
 			printf("GOOD\n");
 		}
 		else 
@@ -227,17 +259,15 @@ int solve(const char *fn, int v)
 			printf("BAD\n");
 		}
 		num++;
-		printf("\n");
+		pair++;
+		//printf("\n");
 	}
+	printf("Sum is %d\n", sum);
 	return num;
 }
 
 int main()
 {
 	solve("ex.txt", 1);
-	vlist *v;
-	parsex(msg1, &v);
-	printf("PARSEX:: curr vector address %16.16lx\n", (unsigned long)v);
-	string s = to_ascii(v);
-	cout << endl << s << endl;
+	//solve("input.txt", 1);
 }
