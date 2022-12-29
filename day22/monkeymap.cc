@@ -13,6 +13,8 @@ typedef enum {EMPTY=0, SPACE, WALL} grid_e;
 
 typedef enum {RIGHT=0, DOWN=1, LEFT=2, UP=3} dir_e;
 
+typedef enum {ACE, TWO, THREE, FOUR, FIVE, SIX} die_t;
+
 typedef struct {
 	int		row;
 	int		col;
@@ -309,7 +311,9 @@ int col_move(rowcol_t &row, int row_index, int spaces, int from_col, int &to_col
 		if (row.walls[COL(row, from_col + i * sgn)])
 		{
 			to_col = COL(row, from_col + (i - 1 ) * sgn);
-			if (debug) printf("Hitting wall at %d,%d  i=%d stopping at %d,%d\n", row_index, COL(row, from_col + i * sgn), i, row_index, to_col);
+			if (debug) printf("Hitting wall at %d,%d  i=%d stopping at %d,%d\n", 
+					row_index, COL(row, from_col + i * sgn), 
+					i, row_index, to_col);
 			return to_col;
 		}
 	}
@@ -356,6 +360,167 @@ int move(rowcol_t r[MAXN], rowcol_t c[MAXN], vector<path_t> &p, loc_t &pos, bool
 	return 0;
 }
 
+
+
+void transition (loc_t &cpos, dir_e d, int cubeside)
+{
+	int row = cpos.row;
+	int col = cpos.col;
+	dir_e dir = cpos.facing;
+
+	switch(dir)
+	{
+		case RIGHT:
+			if (row < cubeside)		// 1 -> 6 orange
+			{
+				col = 4 * cubeside - 1;
+				row = 3 * cubeside - row - 1;
+				dir = LEFT;
+			}
+			else if (row < 2 * cubeside) // 4 -> 6 yellow
+			{
+				col = 4 * cubeside - row;
+				row = 2 * cubeside;
+				dir = DOWN;
+			}			
+			else if (row < 3 * cubeside) // 6 -> 1 ORANGE
+			{
+				col = 3 * cubeside - 1;
+				row = 3 * cubeside - row - 1;
+				dir = LEFT;
+			}
+			break;
+		case LEFT:
+			if (row < cubeside)		// 1 -> 3 light blue
+			{
+				col = cubeside + row;
+				row = cubeside;
+				dir = LEFT;
+			}
+			else if (row < 2 * cubeside) // 2 -> 6 purple
+			{
+				col = 5 * cubeside - row - 1;
+				row = 3 * cubeside - 1;
+				dir = UP;
+			}			
+			else if (row < 3 * cubeside) // 5 -> 3 green
+			{
+				col = 4 * cubeside - row - 1;
+				row = 2 * cubeside - 1;
+				dir = UP;
+			}
+		case UP:
+			if (col < cubeside)		// 2 -> 1 pink
+			{
+				col = 2 * cubeside + col;
+				row = 0;
+				dir = DOWN;
+			}
+			else if (col < 2 * cubeside) // 3 -> 1 blue
+			{
+				col = 2 * cubeside;
+				row = col - cubeside;
+				dir = RIGHT;
+			}			
+			else if (col < 3 * cubeside) // 1 -> 2 pink
+			{
+				col = col - 2 * cubeside;
+				row = cubeside;
+				dir = DOWN;
+			}
+			else if (col < 4 * cubeside) // 6 -> 4 yellow
+			{
+				col = 3 * cubeside - 1;
+				row = 5 * cubeside - col;
+				dir = LEFT;
+			}
+		case DOWN:
+			if (col < cubeside)		// 2 -> 5 light blue
+			{
+				col = 3 * cubeside - col - 1;
+				row = 3 * cubeside - 1;
+				dir = UP;
+			}
+			else if (col < 2 * cubeside) // 3 -> 5 green
+			{
+				col = 2 * cubeside;
+				row = 4 * cubeside - col - 1;
+				dir = RIGHT;
+			}			
+			else if (col < 3 * cubeside) // 5 -> 2 light blue
+			{
+				col = 3 * cubeside - col - 1;
+				row = 2 * cubeside - 1;
+				dir = UP;
+			}
+			else if (col < 4 * cubeside) // 6 -> 2 purple
+			{
+				col = 3 * cubeside - 1;
+				row = 5 * cubeside - col;
+				dir = RIGHT;
+			}
+	}
+	cpos.row = row;
+	cpos.col = col;
+	cpos.facing = dir;
+}
+	
+	
+
+bool next_pos(rowcol_t r[MAXN], rowcol_t c[MAXN], loc_t &cpos, dir_e dir, int cubeside)
+{
+	loc_t  pos = cpos;
+	switch(dir)
+	{
+		case RIGHT:
+			if (pos.col == r[pos.row].end) // need to transition
+				transition(pos, RIGHT, cubeside);
+			else
+				pos.col++;
+			break;
+		case LEFT:
+			if (pos.col == r[pos.row].start) // need to transition
+				transition(pos, LEFT, cubeside);
+			else
+				pos.col--;
+			break;
+		case UP:
+			if (pos.row == c[pos.col].start) // need to transition
+				transition(pos, UP, cubeside);
+			else
+				pos.row--;
+			break;
+		case DOWN:
+			if (pos.row == c[pos.col].end) // need to transition
+				transition(pos, DOWN, cubeside);
+			else
+				pos.row++;
+			break;
+	}
+	if (r[pos.row].walls[pos.col]) return false;
+	cpos = pos;
+	return true;
+}
+
+void do_movept2(rowcol_t r[MAXN], rowcol_t c[MAXN], dir_e dir, int num, 
+							loc_t &pos, int cubeside, bool debug)
+{
+	
+	if (debug) printf("From %d,%d -- %s  %d spaces  ", pos.row, pos.col, 
+		dirAsc(dir), num);
+	while ( (num > 0) && next_pos(r, c, pos, dir, cubeside)) num--;
+	if (debug) printf(" move to %d,%d\n", pos.row, pos.col);
+}
+
+int movept2(rowcol_t r[MAXN], rowcol_t c[MAXN], vector<path_t> &p, loc_t &pos, int cubeside, bool debug)
+{
+	for (size_t i = 0; i < p.size(); i++)
+	{
+		do_movept2(r, c, p[i].d, p[i].spaces, pos, cubeside, debug);
+	}
+	return 0;
+}
+
 void dump(vector<path_t> &p)
 {
 	for (int i = 0; i < (int) p.size(); i++)
@@ -393,7 +558,8 @@ void solvept1(const char *v, int true_spaces, bool debug = false)
 }
 
 
-void solvept2(const char *v, int true_spaces, bool debug = false)
+
+void solvept2(const char *v, int cubeside, int true_spaces, bool debug = false)
 {
 	int	num_rows = 0;
 	int num_cols = 0;
@@ -407,7 +573,7 @@ void solvept2(const char *v, int true_spaces, bool debug = false)
 	if (debug) dump(path);
 	loc_t mloc = {0, rows[0].start, RIGHT};
 	
-	move(rows, cols, path, mloc, debug);
+	movept2(rows, cols, path, mloc, cubeside, debug);
 
 	int password = (mloc.row + 1) * 1000 + 4 * (mloc.col + 1) + mloc.facing;
 	printf("Part II GPS : %d\n", password);
@@ -423,7 +589,8 @@ void solvept2(const char *v, int true_spaces, bool debug = false)
 int main(int argc, char **argv)
 {
 	solvept1("ex.txt", 6032, false);
-	solvept1("input.txt", 75388, false); // 139172 too high  29292 too low 67244 is too low
+	solvept1("input.txt", 75388, false); 
+	solvept2("ex.txt", 5031, 4);
 	return 1;
 }
 
