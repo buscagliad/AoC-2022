@@ -9,6 +9,11 @@
 
 using namespace std;
 
+#define DEBUG 0
+#define MAX_MINUTE 30
+
+int MinutesToRun = MAX_MINUTE;
+
 typedef enum {
 	vs_move,	// if in this state, will move (state -> vs_flow)
 	vs_flow 	// if in this state, can turn on flow if flow > 0;
@@ -18,11 +23,9 @@ typedef struct path_s {
 	int 		minute;
 	string 		openvalves;
 	string 		path;
-	int			from_tunnel;
-	int			ff_tunnel;
 	int			pressure;
 	int			total;
-	bool		has_moved;	// set to true when a new valve is moved to
+	int			valves_left_to_open;
 } path_state;
 
 
@@ -37,15 +40,26 @@ typedef struct valve_s {
 	valve_state state;
 } valve;
 
-int MaxPressure = 0;
+int MaxPressure[MAX_MINUTE+1];
 
-path_state gPath;
+path_state gPath[MAX_MINUTE+1];
+path_state gEleph[MAX_MINUTE+1];
 
 vector<valve> volcano;
 
 vector<int> flows;  // if flow < 0 -> skip turning on this valve
 					// but flow ,- -flow, so next time it will get turned on
-					
+
+int numGTzero(vector<int> f)
+{
+	int count = 0;
+	for (size_t i = 0; i < f.size(); i++)
+	{
+		if (f[i] > 0) count++;
+	}
+	return count;
+}
+	
 
 void outps(path_state &p)
 {
@@ -53,7 +67,6 @@ void outps(path_state &p)
 	printf("Open Values: %s\n", p.openvalves.c_str());
 	printf("Path: %s\n", p.path.c_str());
 	printf("Minute pressure: %d\n", p.pressure);
-	printf("Last two tunnels: %s %s\n", volcano[p.ff_tunnel].nm.c_str(), volcano[p.from_tunnel].nm.c_str());
 	printf("Total pressure: %d\n", p.total);
 }
 
@@ -65,31 +78,6 @@ valve get(string nm)
 	return volcano[0];
 }
 
-int sumflow(int minute, vector<int> flows)
-{
-	int sum = 0;
-	//printf("SF: %d:: ", minute);
-	for (size_t i = 0; i < flows.size(); i++)
-	{
-		if (flows[i] < 0) sum -= flows[i];
-		//printf("%d ", flows[i]);
-	}
-	//printf("\n");
-	return sum;
-}
-
-bool need_to_move(vector<int> flows)
-{
-	for (size_t i = 0; i < flows.size(); i++)
-	{
-		if (flows[i] > 0) return true;;
-	}
-	return false;
-}
-
-typedef struct paths_s {
-	int min[30];
-} paths;
 
 
 int nm_index(vector<valve> &v, string nm)
@@ -114,71 +102,69 @@ int pressure(path_state &p)
 {
 	return p.total;
 }
-	
-void procxx(vector<valve> &v, path_state ps, int ix, vector<int> flows)
+
+void turn_on_valve(vector<valve> &v, path_state &ps, int ix, vector<int> flows)
 {
-	//ps.minute++;
-	//ps.path += " " + v[ix].nm;
-	//ps.total += ps.pressure;
-	if (gPath.total < ps.total) gPath = ps;
-	if (ps.minute >= 4) {
-		printf("Last ps:\n");
-		outps(ps);
-		printf("\n\ngPath:\n");
-		outps(gPath);
-		exit(1);
-	}
-	
-	if (ps.minute >= 30) {
-		//outps(ps);
-		return;
-	}
-	if (ps.has_moved && flows[ix]>0 && ps.openvalves.find(v[ix].nm) == string::npos)
+	if (ps.minute >= MinutesToRun) return;
+	if (DEBUG) printf("turn_on_valve:  flows[ix]=%d   open: %s\n", flows[ix], ps.openvalves.c_str());
+	if ( (flows[ix] == 0) || ps.openvalves.find(v[ix].nm) != string::npos) return;
+	ps.minute++;
+	ps.total += ps.pressure;
+	ps.pressure += flows[ix];
+	ps.openvalves += " " + v[ix].nm;
+	ps.path += " " + to_string(ps.minute) + "=" + v[ix].nm + "*";
+	ps.valves_left_to_open--;
+	//ps.flows[ix] = 0;
+	if (DEBUG) printf("Path: %s  Turning on valve At %s flow: %ld  minute: %d\n", 
+		ps.path.c_str(), v[ix].nm.c_str(), v[ix].flow, ps.minute);
+	if (MaxPressure[ps.minute] < ps.total) 
 	{
-		ps.minute++;
-		ps.total += ps.pressure;
-		ps.pressure += flows[ix];
-		ps.openvalves += " " + v[ix].nm;
-		ps.path += " " + to_string(ps.minute) + "=" + v[ix].nm + "*";
-		ps.has_moved = false;
-		//ps.flows[ix] = 0;
-		printf("Turning on valve At %s flow: %ld  minute: %d\n", v[ix].nm.c_str(), v[ix].flow, ps.minute);
-		procxx(v, ps, ix, flows);
-		//if (pressure > maxp) { maxp = pressure; }
-		if (gPath.total < ps.total) gPath = ps;
+		MaxPressure[ps.minute] = ps.total;
+		gPath[ps.minute] = ps;
 	}
-	// move to a tunnel
-	for (int i = 0; i < (int)v[ix].tunnels.size(); i++)
-	{
-		int maxp = 0;
-		path_state p = ps;
-		
-		if (v[ix].tunix[i] == ps.ff_tunnel)
-		{
-			//printf("Not returning to tunnel %s\n", volcano[ix].tunnels[i].c_str());
-			continue;
-		}
-		p.ff_tunnel = p.from_tunnel;
-		p.from_tunnel = ix; 
-		p.minute++;
-		p.path += " " + to_string(p.minute) + "-" + v[p.from_tunnel].nm;
-		p.total += p.pressure;
-		p.has_moved = true;
-		printf("%d  Tunnelling from %s to %s\n", p.minute, v[ix].nm.c_str(), v[ix].tunnels[i].c_str());
-		procxx(v, p, v[ix].tunix[i], flows);
-		int press = pressure(p);
-		if (press > maxp) {maxp = press; ps = p; if (gPath.total < ps.total) gPath = ps; }
-
-	}
-
-	if (ps.minute >= 30){
-		//outps(ps);
-		return;
-	}
-	procxx(v, ps, ix, flows);
-	
+	//procxx(v, ps, ix, flows);
+	//if (pressure > maxp) { maxp = pressure; }
 }
 
+void move_to_tunnel(vector<valve> &v, path_state ps, int ix, vector<int> flows)
+{
+	if (ps.minute >= MinutesToRun) return;
+	for (int on_valve = 0; on_valve < 2; on_valve++)
+	{
+		// move to a tunnel
+		for (int i = 0; i < (int)v[ix].tunnels.size(); i++)
+		{
+			path_state p = ps;
+			
+			//if (v[ix].tunix[i] == ps.ff_tunnel)
+			//{
+				//printf("Not returning to tunnel %s\n", volcano[ix].tunnels[i].c_str());
+			//	continue;
+			//}
+			p.minute++;
+			p.path += " " + to_string(p.minute) + "-" + v[v[ix].tunix[i]].nm;
+			p.total += p.pressure;
+			if (MaxPressure[p.minute] > p.total) continue;
+
+			if (DEBUG) printf("%d  Tunnelling from %s to %s\n", p.minute, v[ix].nm.c_str(), v[v[ix].tunix[i]].nm.c_str());
+			// on one path we first look to turn on the valve here -
+			// on another path we do not
+			if (on_valve && p.minute < MinutesToRun && p.valves_left_to_open) turn_on_valve(v, p, v[ix].tunix[i], flows);
+			if (p.minute < MinutesToRun) 
+			    move_to_tunnel(v, p, v[ix].tunix[i], flows);
+
+			if (MaxPressure[p.minute] < p.total) 
+			{
+				MaxPressure[p.minute] = p.total;
+				gPath[p.minute] = p;
+			}
+
+		}
+	}
+}
+
+
+	
 
 
 void getchars(char *inp, char *nm, int num)
@@ -194,6 +180,7 @@ void init(const char *fn)
 	char *inp = inl;
 	char nm[3];
 	volcano.clear();
+	flows.clear();
 	printf("\n\nFile: %s\n", fn);
 	int index = 0;
 	while (!feof(f))
@@ -242,13 +229,13 @@ void output(vector<valve> &v)
 {
 	for (size_t i = 0; i < v.size(); i++)
 	{
-		printf("Valve %s has flow rate=%ld; tunnels lead to valve", 
-			v[i].nm.c_str(), v[i].flow);
+		printf("Valve %s[%ld] has flow rate=%ld; tunnels lead to valve", 
+			v[i].nm.c_str(), i, v[i].flow);
 		if (v[i].tunnels.size() > 1) { printf("s"); }
-		printf(" %s", v[i].tunnels[0].c_str());
+		printf(" %s[%d]", v[i].tunnels[0].c_str(), v[i].tunix[0]);
 		for (size_t t = 1; t < v[i].tunnels.size(); t++)
 		{
-			printf(", %s", v[i].tunnels[t].c_str());
+			printf(", %s[%d]", v[i].tunnels[t].c_str(), v[i].tunix[t]);
 		}
 		printf("\n");
 	}
@@ -258,50 +245,70 @@ void solvept1(const char *fn, int answer)
 {
 	init(fn);
 	output(volcano);
-	vector<valve> nv = volcano;
-	output(nv);
+	//vector<valve> nv = volcano;
+	//output(nv);
 	path_state ps;
 	ps.minute = 0;
 	ps.pressure = 0;
-	ps.has_moved = false;
-	ps.total = 0;	
+	ps.total = 0;
+	ps.path = volcano[0].nm;
 	outps(ps);
-	MaxPressure = 0;
-	procxx(nv, ps, 0, flows);
+	for (int i = 0; i <= MAX_MINUTE; i++) 
+	{
+		gPath[i] = ps;
+		MaxPressure[i] = 0;
+	}
+	move_to_tunnel(volcano, ps, nm_index(volcano, "AA"), flows);
 	printf("\n\ngPath\n");
-	outps(gPath);
-	printf("Flow: %d\n", MaxPressure);
-	if (MaxPressure == answer)
+	outps(gPath[MAX_MINUTE]);
+	printf("Flow: %d\n", MaxPressure[MAX_MINUTE]);
+	if (MaxPressure[MAX_MINUTE] == answer)
 		printf("Answer is correct!!!\n");
 	else
 		printf("Answer is not correct - should be %d\n", answer);
 }
 
-void solvept1_flow(const char *fn, int answer)
+void solvept2(const char *fn, int answer)
 {
 	init(fn);
 	output(volcano);
-	vector<valve> nv = volcano;
-	output(nv);
+	//vector<valve> nv = volcano;
+	//output(nv);
 	path_state ps;
-	ps.minute = 0;
+	ps.minute = 1;
 	ps.pressure = 0;
-	ps.total = 0;	
+	ps.total = 0;
+	ps.path = volcano[0].nm;
+	ps.valves_left_to_open = numGTzero(flows);
+	int aa = nm_index(volcano, "AA");
+	path_state el = ps;
 	outps(ps);
-	MaxPressure = 0;
-	procxx(nv, ps, 0, flows);
-	outps(gPath);
-	printf("Flow: %d\n", MaxPressure);
-	if (MaxPressure == answer)
+    MinutesToRun = 26;
+	for (size_t k = 0; k < volcano[aa].tunix.size(); k++)
+	{
+		for (int i = 0; i <= MAX_MINUTE; i++) 
+		{
+			gPath[i] = ps;
+			MaxPressure[i] = 0;
+		}
+		path_state nps = ps;
+		move_to_tunnel(volcano, nps, volcano[aa].tunix[k], flows);
+		printf("\n\ngPath\n");
+		outps(gPath[MinutesToRun]);
+		printf("Flow: %d\n", MaxPressure[MinutesToRun]);
+	}
+	if (MaxPressure[MAX_MINUTE] == answer)
 		printf("Answer is correct!!!\n");
 	else
 		printf("Answer is not correct - should be %d\n", answer);
 }
-
 int main()
 {
-	solvept1("ex.txt", 1651);
-
+	solvept2("ex.txt", 1651);
 	return 0;
-	solvept1("input.txt", 1);
+
+	solvept1("ex.txt", 1651);
+	solvept1("input.txt", 1906);  // 1833 is too low!!  2544 is too high!!
+	return 0;
 }
+
