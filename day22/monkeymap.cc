@@ -13,12 +13,26 @@ typedef enum {EMPTY=0, SPACE, WALL} grid_e;
 
 typedef enum {RIGHT=0, DOWN=1, LEFT=2, UP=3} dir_e;
 
+
+const char *dirAsc(dir_e e)
+{
+	switch(e)
+	{
+		case UP: 	return "UP";
+		case DOWN: 	return "DOWN";
+		case LEFT: 	return "LEFT";
+		case RIGHT: return "RIGHT";
+	}
+	return "ERROR";
+}
+
 typedef enum {ACE, TWO, THREE, FOUR, FIVE, SIX} die_t;
 
 typedef struct {
 	int		row;
 	int		col;
-	dir_e	facing;
+	dir_e	facing;	
+
 }loc_t;
 
 
@@ -32,9 +46,35 @@ loc_t my_position;
 
 typedef struct {
 	dir_e	d;
+	bool	cw;
 	int		spaces;
 } path_t;
 
+
+dir_e	next_facing(dir_e f, bool cw)
+{
+	dir_e rv;
+	switch(f)
+	{
+		case RIGHT:
+			if (cw) rv = DOWN;
+			else rv = UP;
+			break;
+		case LEFT:
+			if (cw) rv = UP;
+			else rv = DOWN;
+			break;
+		case UP:
+			if (cw) rv = RIGHT;
+			else rv = LEFT;
+			break;
+		case DOWN:
+			if (cw) rv = LEFT;
+			else rv = RIGHT;
+			break;
+	}
+	return rv;
+}
 
 
 void clearWalls(bool w[MAXN])
@@ -80,17 +120,6 @@ void	row2col(grid_e g[MAXN][MAXN], rowcol_t cols[MAXN], int num_cols)
 	}
 }
 
-const char *dirAsc(dir_e e)
-{
-	switch(e)
-	{
-		case UP: 	return "UP";
-		case DOWN: 	return "DOWN";
-		case LEFT: 	return "LEFT";
-		case RIGHT: return "RIGHT";
-	}
-	return "ERROR";
-}
 
 char letter = 'A';
 
@@ -106,14 +135,17 @@ int getnum(char **s)
 }
 
 dir_e last;
+bool  last_cw;
 
 void parsepath(char *c, vector<path_t> &p)
 {
 	path_t	go;
+
 	if ( !(*c) || *c == '\n') return;
 	if (p.size() == 0)
 	{
-		go.d = RIGHT;
+		go.d = UP;
+		go.cw = true;
 		last = RIGHT;
 		go.spaces = getnum(&c);
 		p.push_back(go);
@@ -123,6 +155,7 @@ void parsepath(char *c, vector<path_t> &p)
 	bool cw = *c == 'R';
 	if ( (*c != 'L') && (*c != 'R') ) printf("ERROR!!!\n");
 	c++;
+	go.cw = cw;
 	if (cw)
 	{
 		switch(last)
@@ -146,7 +179,7 @@ void parsepath(char *c, vector<path_t> &p)
 	go.spaces = getnum(&c);
 	last = go.d;
 	p.push_back(go);	
-	//printf("D: %s  N: %d  %s\n", dirAsc(go.d), go.spaces, c);	
+	//printf("D: %s  N: %d -  cw: %d  %s", dirAsc(go.d), go.spaces, cw, c);	
 	
 	parsepath(c, p);
 }
@@ -248,288 +281,313 @@ rowcol_t cols[MAXN];
 grid_e gr[MAXN][MAXN];
 
 
-int ROW(rowcol_t &col, int to_row)
-{
-	int width = col.end - col.start + 1;
-	int delta = to_row - col.start;
-	delta = (100 * width + delta) % width;
-	
-	return col.start + delta;
-}
-
-//
-// row_move takes in a column with the starting spot (row) and number
-//  of spaces to move, and returns the ending row
-int row_move(rowcol_t &column, int col_index, int spaces, int from_row, int &to_row, bool debug)
-{
-	int width = column.end - column.start + 1;
-//#define ROW(n)	(column.start + ( ( (n) + 10 * width) % (width) ) )
-	int sgn = spaces > 0 ? 1 : -1;
-	
-	if (debug) printf("row_move: %d  [%d - %d] moving %d   width = %d\n", from_row, column.start, 
-				column.end, spaces, width);
-	for (int i = 1; i <= abs(spaces); i++)
-	{
-		if (column.walls[ROW(column, from_row + i * sgn)])
-		{
-			to_row = ROW(column, from_row + (i - 1) * sgn);
-			if (debug) printf("Hitting wall at %d,%d  stopping at %d,%d\n", ROW(column, from_row + i * sgn), col_index, to_row, col_index);
-			return to_row;
-		}
-	}
-	to_row = ROW(column, from_row + spaces);
-	return to_row;
-}
-
-
-
-int COL(rowcol_t &row, int to_col)
-{
-	int width = row.end - row.start + 1;
-	int delta = to_col - row.start;
-	delta = (100 * width + delta) % width;
-	
-	//if (to_col > row.end) delta = (to_col - row.end) % width;
-	//if (to_col < row.start) delta = (row.start - to_col) % width;
-	
-	return row.start + delta;
-}
-
-//
-// col_move takes in a row with the starting spot (col) and number
-//  of spaces to move, and returns the ending column
-int col_move(rowcol_t &row, int row_index, int spaces, int from_col, int &to_col, bool debug)
-{
-	int width = row.end - row.start + 1;
-//#define COL(n)	((n) > row.end ? row.start + (n) - row.end : (n) < row.start ? row.end + ((n) - row.start) : (n) : (n) 
-	int sgn = spaces > 0 ? 1 : -1;
-	
-	if (debug) printf("col_move: %d  [%d - %d] moving %d   width = %d\n", from_col, 
-				row.start, row.end, spaces, width);
-	for (int i = 1; i <= abs(spaces); i++)
-	{
-		if (row.walls[COL(row, from_col + i * sgn)])
-		{
-			to_col = COL(row, from_col + (i - 1 ) * sgn);
-			if (debug) printf("Hitting wall at %d,%d  i=%d stopping at %d,%d\n", 
-					row_index, COL(row, from_col + i * sgn), 
-					i, row_index, to_col);
-			return to_col;
-		}
-	}
-	to_col = COL(row, from_col + spaces);
-	return to_col;
-}
-
-void do_move(rowcol_t r[MAXN], rowcol_t c[MAXN], path_t &p, loc_t &pos, bool debug)
-{
-	int	num = p.spaces;
-	int row = pos.row;
-	int col = pos.col;
-	int to_row;
-	int to_col;
-	
-	if (debug) printf("From %d,%d -- %s  %d spaces  ", pos.row, pos.col, dirAsc(p.d), num);
-
-	switch(p.d)
-	{
-		case RIGHT:
-			pos.col = col_move(r[row], row,  num, col, to_col, debug);
-			break;
-		case LEFT:
-			pos.col = col_move(r[row], row, -num, col, to_col, debug);
-			break;
-		case UP:
-			pos.row = row_move(c[col], col, -num, row, to_row, debug);
-			break;
-		case DOWN:
-			pos.row = row_move(c[col], col, num, row, to_row, debug);
-			break;
-	}
-	if (debug) printf(" move to %d,%d\n", pos.row, pos.col);
-}
-
-int move(rowcol_t r[MAXN], rowcol_t c[MAXN], vector<path_t> &p, loc_t &pos, bool debug)
-{
-	for (size_t i = 0; i < p.size(); i++)
-	{
-		do_move(r, c, p[i], pos, debug);
-		if (debug) if (r[pos.row].walls[pos.col]) printf("ERROR - bad location AA\n");
-		if (debug) if (c[pos.col].walls[pos.row]) printf("ERROR - bad location BB\n");
-	}
-	return 0;
-}
-
-
-
-void transition (loc_t &cpos, dir_e d, int cubeside)
+void transition50 (loc_t &cpos, dir_e d, int cubeside)
 {
 	int row = cpos.row;
 	int col = cpos.col;
-	dir_e dir = cpos.facing;
+	
 
-	switch(dir)
+	switch(d)
+	{
+		case RIGHT:
+			if (row < cubeside)		// 2 -> 5 Orange
+			{
+				cpos.col = 2 * cubeside - 1;
+				cpos.row = 3 * cubeside - row - 1;
+				cpos.facing = LEFT;
+			}
+			else if (row < 2 * cubeside) // 3 -> 2 Blue
+			{
+				cpos.col = cubeside + row;
+				cpos.row = cubeside - 1;
+				cpos.facing = UP;
+			}			
+			else if (row < 3 * cubeside) // 5 -> 2 ORANGE
+			{
+				cpos.col = 3 * cubeside - 1;
+				cpos.row = 3 * cubeside - row - 1;
+				cpos.facing = LEFT;
+			}
+			else if (row < 4 * cubeside) // 6 --> 5 Yellow
+			{
+				cpos.col = row - 2 * cubeside;
+				cpos.row = 3 * cubeside - 1;
+				cpos.facing = UP;
+			}
+			break;
+		case LEFT:
+			if (row < cubeside)		// 1 -> 4  purple
+			{
+				cpos.col = 0;
+				cpos.row = 3 * cubeside - row - 1;
+				cpos.facing = RIGHT;
+			}
+			else if (row < 2 * cubeside) // 3 --> 4 green
+			{
+				cpos.col = row - cubeside;
+				cpos.row = 2 * cubeside;
+				cpos.facing = DOWN;
+			}			
+			else if (row < 3 * cubeside) // 4 --> 1  purple
+			{
+				cpos.col = cubeside;
+				cpos.row = 3 * cubeside - row - 1;
+				cpos.facing = RIGHT;
+			}
+			else if (row < 4 * cubeside) // 6 --> 1  light blue
+			{
+				cpos.col = row - 2 * cubeside;
+				cpos.row = 0;
+				cpos.facing = DOWN;
+			}
+			break;
+		case UP:
+			if (col < cubeside)		// 4 -> 3 green
+			{
+				cpos.col = cubeside;
+				cpos.row = cubeside + col;
+				cpos.facing = RIGHT;
+			}
+			else if (col < 2 * cubeside) // 1 -> 6 light blue
+			{
+				cpos.col = 0;
+				cpos.row = 2 * cubeside + col;
+				cpos.facing = RIGHT;
+			}			
+			else if (col < 3 * cubeside) // 2 -> 6 pink
+			{
+				cpos.col = col - 2 * cubeside;
+				cpos.row = 4 * cubeside - 1;
+				cpos.facing = UP;
+			}
+			break;
+		case DOWN:
+			if (col < cubeside)		// 6 -> 2 Pink
+			{
+				cpos.col = 2 * cubeside + col;
+				cpos.row = 0;
+				cpos.facing = DOWN;
+			}
+			else if (col < 2 * cubeside) // 5 --> 6  Yellow
+			{
+				cpos.col = cubeside - 1;
+				cpos.row = 2 * cubeside + col;
+				cpos.facing = LEFT;
+			}			
+			else if (col < 3 * cubeside) // 2 --> 3 blue
+			{
+				cpos.col = 2 * cubeside - 1;
+				cpos.row = col - cubeside;
+				cpos.facing = LEFT;
+			}
+			break;
+	}
+}	
+
+void transition4 (loc_t &cpos, dir_e d, int cubeside)
+{
+	int row = cpos.row;
+	int col = cpos.col;
+	
+
+	switch(d)
 	{
 		case RIGHT:
 			if (row < cubeside)		// 1 -> 6 orange
 			{
-				col = 4 * cubeside - 1;
-				row = 3 * cubeside - row - 1;
-				dir = LEFT;
+				cpos.col = 4 * cubeside - 1;
+				cpos.row = 3 * cubeside - row - 1;
+				cpos.facing = LEFT;
 			}
 			else if (row < 2 * cubeside) // 4 -> 6 yellow
 			{
-				col = 4 * cubeside - row;
-				row = 2 * cubeside;
-				dir = DOWN;
+				cpos.col = 5 * cubeside - row - 1;
+				cpos.row = 2 * cubeside;
+				cpos.facing = DOWN;
 			}			
 			else if (row < 3 * cubeside) // 6 -> 1 ORANGE
 			{
-				col = 3 * cubeside - 1;
-				row = 3 * cubeside - row - 1;
-				dir = LEFT;
+				cpos.col = 3 * cubeside - 1;
+				cpos.row = 3 * cubeside - row - 1;
+				cpos.facing = LEFT;
 			}
 			break;
 		case LEFT:
-			if (row < cubeside)		// 1 -> 3 light blue
+			if (row < cubeside)		// 1 -> 3  blue
 			{
-				col = cubeside + row;
-				row = cubeside;
-				dir = LEFT;
+				cpos.col = row + cubeside;
+				cpos.row = cubeside;
+				cpos.facing = DOWN;
 			}
 			else if (row < 2 * cubeside) // 2 -> 6 purple
 			{
-				col = 5 * cubeside - row - 1;
-				row = 3 * cubeside - 1;
-				dir = UP;
+				cpos.col = 5 * cubeside - row - 1;
+				cpos.row = 3 * cubeside - 1;
+				cpos.facing = UP;
 			}			
 			else if (row < 3 * cubeside) // 5 -> 3 green
 			{
-				col = 4 * cubeside - row - 1;
-				row = 2 * cubeside - 1;
-				dir = UP;
+				cpos.col = 4 * cubeside - row - 1;
+				cpos.row = 2 * cubeside - 1;
+				cpos.facing = UP;
 			}
+			break;
 		case UP:
 			if (col < cubeside)		// 2 -> 1 pink
 			{
-				col = 2 * cubeside + col;
-				row = 0;
-				dir = DOWN;
+				cpos.col = 2 * cubeside + col;
+				cpos.row = 0;
+				cpos.facing = DOWN;
 			}
 			else if (col < 2 * cubeside) // 3 -> 1 blue
 			{
-				col = 2 * cubeside;
-				row = col - cubeside;
-				dir = RIGHT;
+				cpos.col = 2 * cubeside;
+				cpos.row = col - cubeside;
+				cpos.facing = RIGHT;
 			}			
 			else if (col < 3 * cubeside) // 1 -> 2 pink
 			{
-				col = col - 2 * cubeside;
-				row = cubeside;
-				dir = DOWN;
+				cpos.col = col - 2 * cubeside;
+				cpos.row = cubeside;
+				cpos.facing = DOWN;
 			}
 			else if (col < 4 * cubeside) // 6 -> 4 yellow
 			{
-				col = 3 * cubeside - 1;
-				row = 5 * cubeside - col;
-				dir = LEFT;
+				cpos.col = 3 * cubeside - 1;
+				cpos.row = 5 * cubeside - col - 1;
+				cpos.facing = LEFT;
 			}
+			break;
 		case DOWN:
 			if (col < cubeside)		// 2 -> 5 light blue
 			{
-				col = 3 * cubeside - col - 1;
-				row = 3 * cubeside - 1;
-				dir = UP;
+				cpos.col = 3 * cubeside - col - 1;
+				cpos.row = 3 * cubeside - 1;
+				cpos.facing = UP;
 			}
 			else if (col < 2 * cubeside) // 3 -> 5 green
 			{
-				col = 2 * cubeside;
-				row = 4 * cubeside - col - 1;
-				dir = RIGHT;
+				cpos.col = 2 * cubeside;
+				cpos.row = 4 * cubeside - col - 1;
+				cpos.facing = RIGHT;
 			}			
 			else if (col < 3 * cubeside) // 5 -> 2 light blue
 			{
-				col = 3 * cubeside - col - 1;
-				row = 2 * cubeside - 1;
-				dir = UP;
+				cpos.col = 3 * cubeside - col - 1;
+				cpos.row = 2 * cubeside - 1;
+				cpos.facing = UP;
 			}
 			else if (col < 4 * cubeside) // 6 -> 2 purple
 			{
-				col = 3 * cubeside - 1;
-				row = 5 * cubeside - col;
-				dir = RIGHT;
+				cpos.col = 0;
+				cpos.row = 5 * cubeside - col - 1;
+				cpos.facing = RIGHT;
 			}
+			break;
 	}
-	cpos.row = row;
-	cpos.col = col;
-	cpos.facing = dir;
 }
 	
-	
+void transition(loc_t &cpos, dir_e d, int cubeside)
+{
+	if (cubeside == 4)
+	    transition4 (cpos, d, cubeside);
+	if (cubeside == 50)
+	    transition50 (cpos, d, cubeside);
+}
 
-bool next_pos(rowcol_t r[MAXN], rowcol_t c[MAXN], loc_t &cpos, dir_e dir, int cubeside)
+bool next_pos(rowcol_t r[MAXN], rowcol_t c[MAXN], loc_t &cpos, 
+		int cubeside, bool part2)
 {
 	loc_t  pos = cpos;
-	switch(dir)
+	switch(cpos.facing)
 	{
 		case RIGHT:
 			if (pos.col == r[pos.row].end) // need to transition
-				transition(pos, RIGHT, cubeside);
+			{
+				if (part2) transition(pos, RIGHT, cubeside);
+				else pos.col = r[pos.row].start;
+			}
 			else
 				pos.col++;
 			break;
 		case LEFT:
 			if (pos.col == r[pos.row].start) // need to transition
-				transition(pos, LEFT, cubeside);
+			{
+				if (part2) transition(pos, LEFT, cubeside);
+				else pos.col = r[pos.row].end;
+			}
 			else
 				pos.col--;
 			break;
 		case UP:
 			if (pos.row == c[pos.col].start) // need to transition
-				transition(pos, UP, cubeside);
+			{
+				if (part2) transition(pos, UP, cubeside);
+				else pos.row = c[pos.col].end;
+			}
 			else
 				pos.row--;
 			break;
 		case DOWN:
 			if (pos.row == c[pos.col].end) // need to transition
-				transition(pos, DOWN, cubeside);
+			{
+				if (part2) transition(pos, DOWN, cubeside);
+				else pos.row = c[pos.col].start;
+			}
 			else
 				pos.row++;
 			break;
 	}
+	if ( (pos.row < 0) || (pos.col < 0) )
+		printf("ERROR - pos.row = %d  pos.col = %d\n", pos.row, pos.col);
 	if (r[pos.row].walls[pos.col]) return false;
 	cpos = pos;
 	return true;
 }
 
-void do_movept2(rowcol_t r[MAXN], rowcol_t c[MAXN], dir_e dir, int num, 
-							loc_t &pos, int cubeside, bool debug)
+void do_movept2(rowcol_t r[MAXN], rowcol_t c[MAXN], bool cw, int num, 
+							loc_t &pos, int cubeside, bool part2, bool debug)
 {
 	
 	if (debug) printf("From %d,%d -- %s  %d spaces  ", pos.row, pos.col, 
-		dirAsc(dir), num);
-	while ( (num > 0) && next_pos(r, c, pos, dir, cubeside)) num--;
-	if (debug) printf(" move to %d,%d\n", pos.row, pos.col);
+		dirAsc(pos.facing), num);
+	while ( (num > 0) && next_pos(r, c, pos, cubeside, part2)) 
+	{
+		num--;
+	}
+	if (debug) printf(" move to %d,%d  facing %s\n", pos.row, pos.col, dirAsc(pos.facing));
 }
 
-int movept2(rowcol_t r[MAXN], rowcol_t c[MAXN], vector<path_t> &p, loc_t &pos, int cubeside, bool debug)
+int movept2(rowcol_t r[MAXN], rowcol_t c[MAXN], vector<path_t> &p, loc_t &pos, int cubeside, bool part2, bool debug)
 {
+	pos.facing = UP;
 	for (size_t i = 0; i < p.size(); i++)
 	{
-		do_movept2(r, c, p[i].d, p[i].spaces, pos, cubeside, debug);
+		pos.facing = next_facing(pos.facing, p[i].cw);
+		if (debug) printf("From %d,%d  facing %s  with CW: %d for %d steps\n",
+			pos.row, pos.col, 
+			dirAsc(pos.facing), p[i].cw, p[i].spaces);
+		do_movept2(r, c, p[i].cw, p[i].spaces, pos, cubeside, part2, debug);
 	}
 	return 0;
 }
 
 void dump(vector<path_t> &p)
 {
+	dir_e    d = UP;
 	for (int i = 0; i < (int) p.size(); i++)
 	{
-		printf("%6s %6d spaces\n", dirAsc(p[i].d), p[i].spaces);
+		d = next_facing(d, p[i].cw);
+		printf("%6s %6d spaces %s\n", dirAsc(d), p[i].spaces,
+			p[i].cw ? "CW" : "CCW");
 	}
 }
 
-void solvept1(const char *v, int true_spaces, bool debug = false)
+
+
+
+void solve(const char *v, int cubeside, int true_password, 
+					bool part2, bool debug = false)
 {
 	int	num_rows = 0;
 	int num_cols = 0;
@@ -543,44 +601,64 @@ void solvept1(const char *v, int true_spaces, bool debug = false)
 	if (debug) dump(path);
 	loc_t mloc = {0, rows[0].start, RIGHT};
 	
-	move(rows, cols, path, mloc, debug);
-
-	int password = (mloc.row + 1) * 1000 + 4 * (mloc.col + 1) + mloc.facing;
-	printf("Part I GPS : %d\n", password);
-	if (true_spaces > 0)
+	if (0)
 	{
-		if (password != true_spaces)
-			printf("ERROR - light count does not agree with truth: %d!\n\n", true_spaces);
-		else
-			printf("Successfully found password!!\n\n");
+		loc_t cpos;
+		loc_t npos;
+		for (int r = 0; r < num_rows; r++)
+		{
+			cpos.row = r;
+			cpos.col = rows[r].start;
+			npos = cpos;
+			transition50 (npos, LEFT, cubeside);
+
+		    printf("%s  %d,%d  -->  %d,%d\n", dirAsc(LEFT), cpos.row, cpos.col, npos.row, npos.col);
+		}
+		printf("\n");
+		for (int r = 0; r < num_rows; r++)
+		{
+
+			cpos.row = r;
+			cpos.col = rows[r].end;
+			npos = cpos;
+			transition50 (npos, RIGHT, cubeside);
+
+		    printf("%s  %d,%d  -->  %d,%d\n", dirAsc(RIGHT), cpos.row, cpos.col, npos.row, npos.col);
+		}
+		printf("\n");
+		for (int c = 0; c < num_cols; c++)
+		{
+			cpos.row = cols[c].end;
+			cpos.col = c;
+			npos = cpos;
+			transition50 (npos, DOWN, cubeside);
+
+		    printf("%s  %d,%d  -->  %d,%d\n", dirAsc(DOWN), cpos.row, cpos.col, npos.row, npos.col);
+		}
+		printf("\n");
+		for (int c = 0; c < num_cols; c++)
+		{
+
+			cpos.row = cols[c].start;
+			cpos.col = c;
+			npos = cpos;
+			transition50 (npos, UP, cubeside);
+
+		    printf("%s  %d,%d  -->  %d,%d\n", dirAsc(UP), cpos.row, cpos.col, npos.row, npos.col);
+		}
+		printf("\n");
+		exit(1);
 	}
-
-}
-
-
-
-void solvept2(const char *v, int cubeside, int true_spaces, bool debug = false)
-{
-	int	num_rows = 0;
-	int num_cols = 0;
-	vector<path_t> path;
-	init(v, gr, rows, num_rows, num_cols, path);
-	row2col(gr, cols, num_cols);
-
-	printf("Input file: %s\n", v);
-
-	if (debug) dump(rows, num_rows);
-	if (debug) dump(path);
-	loc_t mloc = {0, rows[0].start, RIGHT};
 	
-	movept2(rows, cols, path, mloc, cubeside, debug);
+	movept2(rows, cols, path, mloc, cubeside, part2, debug);
 
 	int password = (mloc.row + 1) * 1000 + 4 * (mloc.col + 1) + mloc.facing;
-	printf("Part II GPS : %d\n", password);
-	if (true_spaces > 0)
+	if (part2) printf("Part II GPS : %d\n", password);
+	else printf("Part I GPS : %d\n", password);
+	if (true_password > 0)
 	{
-		if (password != true_spaces)
-			printf("ERROR - light count does not agree with truth: %d!\n\n", true_spaces);
+		if (password != true_password)
+			printf("ERROR - password does not agree with truth: %d!\n\n", true_password);
 		else
 			printf("Successfully found password!!\n\n");
 	}
@@ -588,9 +666,10 @@ void solvept2(const char *v, int cubeside, int true_spaces, bool debug = false)
 }
 int main(int argc, char **argv)
 {
-	solvept1("ex.txt", 6032, false);
-	solvept1("input.txt", 75388, false); 
-	solvept2("ex.txt", 5031, 4);
+	solve("ex.txt", 4, 6032, false, false);
+	solve("ex.txt", 4, 5031, true, false);
+	solve("input.txt", 50, 75388, false); 
+	solve("input.txt", 50, 182170, true, false);
 	return 1;
 }
 
