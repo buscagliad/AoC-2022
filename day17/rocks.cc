@@ -12,17 +12,16 @@
 
 typedef struct rock_s {
 	const char *id;
-	int64_t	wide;
-	int64_t tall;
-	int     tops[4];
-	int     bots[4];
+	int64_t rows;
+	int64_t	cols;
+	bool	sh[4][4];
 	int64_t lpos;
 	int64_t rpos;
 	int64_t bpos;
 } rock_t;
 
 typedef struct sh_r {
-	int64_t sh[7];  // sh[0] = ch_top - ch_tops[0];
+	uint64_t sh[7];  // sh[0] = ch_top - ch_tops[0];
 	int64_t r;
 	int64_t height;
 } sh_t;
@@ -33,11 +32,18 @@ vector<sh_t> shapes;
 
 void out(rock_t &r, const char *s = "")
 {
-
-	printf("\n%s\nrock: %s  wide: %ld   tall: %ld\n", s, r.id, r.wide, r.tall);
+	printf("%s Rock: %s\n", s, r.id);
+	for (int j = r.rows - 1; j >= 0; j--)
+	{
+		printf("|");
+		for (int i = 0; i < r.cols; i++)
+		{
+			if (r.sh[j][i]) printf("#"); else printf(".");
+		}
+		printf("|\n");
+	}
+	//printf("\n%s\nrock: %s  cols: %ld   rows: %ld\n", s, r.id, r.cols, r.rows);
 	printf("lpos: %ld   rpos: %ld    bpos: %ld\n", r.lpos, r.rpos, r.bpos);
-	printf("tops: %d   %d   %d   %d \n", r.tops[0], r.tops[1], r.tops[2], r.tops[3]);
-	printf("bots: %d   %d   %d   %d \n", r.bots[0], r.bots[1], r.bots[2], r.bots[3]);
 }
 
 rock_t	rocks[NUM_ROCK_TYPES];
@@ -53,15 +59,90 @@ bool	jet[12000];
 int64_t		jet_count;
 int64_t		jet_index = 0;
 
+const int64_t			ch_size = 50;
+
+bool	chamber[ch_size][CH_WIDE];
+int64_t	ch_index;	// index into the chamber (mod ch_size to get index)
+
+void histogram();
+
+// need to add ch_gaps!
+void add_to_chamber(rock_t &rk, bool debug = false)
+{
+	
+	// clear bottom rows to become 'top' rows
+	for (int64_t r = ch_top; r <= max(ch_top, ch_top + rk.rows + rk.bpos); r++)
+		for (int64_t c = 0; c < 7; c++)
+			chamber[r % ch_size][c] = false;
+	
+	//if (ch_top + r.bpos < 0) return;
+	for (int64_t r = 0; r < rk.rows; r++)
+	{
+		for (int64_t c = 0; c < rk.cols; c++)
+		{
+			if (rk.sh[r][c])
+			    chamber[(r + rk.bpos + ch_top) % ch_size][c + rk.lpos] = rk.sh[r][c];
+		}
+	}
+	ch_top += max(0l, rk.rows + rk.bpos);
+	if (debug) histogram();
+}
+
+//
+bool intersect(rock_t &rk, bool debug = false)
+{
+	if (rk.bpos >= 0) return false;
+	if (rk.bpos < 0 && ch_top == 0) return true;
+	for (int64_t c = 0; c < rk.cols; c++)
+	{
+		//for (int64_t t = 0; t < r.rows; t++)
+		//for (int64_t r = rk.rows - 1; r >= 0; r--)
+		for (int64_t rb = rk.bpos; rb <= min(0l, (rk.rows - 1 + rk.bpos)); rb++)  // just do the bottom rows
+		{
+			int64_t r = rb - rk.bpos;
+			if (!rk.sh[r][c]) continue;
+			//int64_t chr = (r + rk.bpos + ch_top) % ch_size;
+			int64_t chr = (rb + ch_top) % ch_size;
+			//int64_t chc = (t + ch_top) % ch_size;
+			int64_t chc = c + rk.lpos;
+			if (chamber[chr][chc] && rk.sh[r][c])
+			{
+				if (debug) printf ("Collision at chc,chr: %ld,%ld   w,t:%ld,%ld  bpos=%ld, ch_top=%ld\n", 
+						chr, chc, r, c, rk.bpos, ch_top);
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+
+
+void 	zarr(bool x[MAX_ROCK_WIDE][MAX_ROCK_TALL])
+{
+	for (int64_t w = 0; w < MAX_ROCK_WIDE; w++)
+		for (int64_t t = 0; t < MAX_ROCK_TALL; t++)
+			x[w][t] = false;
+}
+
+
 
 void histogram()
 {
-
-	printf("  TOPS:  %6ld  %6ld  %6ld  %6ld  %6ld  %6ld  %6ld\n",
-		ch_tops[0], ch_tops[1], ch_tops[2], ch_tops[3], ch_tops[4], ch_tops[5], ch_tops[6]);
-	printf("  GAPS:  %6ld  %6ld  %6ld  %6ld  %6ld  %6ld  %6ld\n",
-		ch_gaps[0], ch_gaps[1], ch_gaps[2], ch_gaps[3], ch_gaps[4], ch_gaps[5], ch_gaps[6]);
+	printf("%6ld |.......|\n", ch_top);
+	for (int r = ch_top-1; r >= max(ch_top - ch_size, 0l); r--)
+	//for (int j = max(ch_size-1, ch_top); j >= max(0, ch_top); j--)
+	{
+		printf("%6d |", r);
+		for (int c = 0; c < CH_WIDE; c++)
+		{
+			if (chamber[r % ch_size][c]) printf("#"); else printf(".");
+		}
+		printf("|\n");
+	}
+	printf("\n");
 }
+
 bool next_jet_right()
 {
 	bool rv = jet[jet_index % jet_count];
@@ -69,23 +150,6 @@ bool next_jet_right()
 	return rv;
 }
 
-//
-// need to add ch_gaps!
-bool intersect(rock_t &r, bool debug = false)
-{
-	if (r.bpos < 0) return true;
-	for (int64_t w = 0; w < 4; w++)
-	{
-		if (r.tops[w] == 0) continue;
-		if (ch_tops[w + r.lpos] > r.bpos + r.bots[w])
-		{
-			if (debug) printf("Top intersects at %ld - height %ld - rock %ld\n",
-				w + r.lpos, ch_tops[w + r.lpos], r.bpos + r.bots[w]);
-			return true;
-		}
-	}
-	return false;
-}
 
 bool movelr(rock_t &r, bool right)
 {
@@ -125,7 +189,7 @@ bool movedown(rock_t &r)
 
 void getthree(int64_t &left, int64_t &right)
 {
-	for (int i = 0; i < 3; i++)
+	for (int i = 0; i < 4; i++)
 	{
 		if (next_jet_right())
 		{
@@ -143,7 +207,7 @@ rock_t new_rock(int64_t index)
 {
 	int64_t rtype = index % NUM_ROCK_TYPES;
 	rock_t	nr = rocks[rtype];
-	nr.bpos = ch_top;		// we will move 3 'puffs of jets'
+	nr.bpos = 0;		// we will move 3 'puffs of jets'
 	getthree(nr.lpos, nr.rpos);
 
 	return nr;
@@ -171,120 +235,103 @@ void init(const char *fn)
 
 	// ####
 	rocks[0].id = "flat";
-	rocks[0].wide = 4;
-	rocks[0].tall = 1;
+	rocks[0].cols = 4;
+	rocks[0].rows = 1;
 	rocks[0].lpos = 2;
 	rocks[0].rpos = 5;
+	rocks[0].bpos = 0;
 
-	rocks[0].tops[0] = 1;
-	rocks[0].tops[1] = 1;
-	rocks[0].tops[2] = 1;
-	rocks[0].tops[3] = 1;
-	rocks[0].bots[0] = 0;
-	rocks[0].bots[1] = 0;
-	rocks[0].bots[2] = 0;
-	rocks[0].bots[3] = 0;
+	zarr(rocks[0].sh);
+	rocks[0].sh[0][0] = true;
+	rocks[0].sh[0][1] = true;
+	rocks[0].sh[0][2] = true;
+	rocks[0].sh[0][3] = true;
 
 	// .#.
 	// ###
 	// .#.
 	rocks[1].id = "cross";
-	rocks[1].wide = 3;
-	rocks[1].tall = 3;
+	rocks[1].cols = 3;
+	rocks[1].rows = 3;
 	rocks[1].lpos = 2;
 	rocks[1].rpos = 4;
+	rocks[1].bpos = 0;
 
-	//rocks[0].shape = {1,3,1];
-	rocks[1].tops[0] = 2;
-	rocks[1].tops[1] = 3;
-	rocks[1].tops[2] = 2;
-	rocks[1].tops[3] = 0;
-	rocks[1].bots[0] = 1;
-	rocks[1].bots[1] = 0;
-	rocks[1].bots[2] = 1;
-	rocks[1].bots[3] = 0;	
+	zarr(rocks[1].sh);
+	rocks[1].sh[2][1] = true;
+	rocks[1].sh[1][0] = true;
+	rocks[1].sh[1][1] = true;
+	rocks[1].sh[1][2] = true;
+	rocks[1].sh[0][1] = true;
 
 	// ..#
 	// ..#
 	// ###
 	rocks[2].id = "bw L";
-	rocks[2].wide = 3;
-	rocks[2].tall = 3;
+	rocks[2].cols = 3;
+	rocks[2].rows = 3;
 	rocks[2].lpos = 2;
 	rocks[2].rpos = 4;
+	rocks[2].bpos = 0;
 	
-	rocks[2].tops[0] = 1;
-	rocks[2].tops[1] = 1;
-	rocks[2].tops[2] = 3;
-	rocks[2].tops[3] = 0;
-	rocks[2].bots[0] = 0;
-	rocks[2].bots[1] = 0;
-	rocks[2].bots[2] = 0;
-	rocks[2].bots[3] = 0;
+
+	zarr(rocks[2].sh);
+	rocks[2].sh[0][0] = true;
+	rocks[2].sh[0][1] = true;
+	rocks[2].sh[0][2] = true;
+	rocks[2].sh[1][2] = true;
+	rocks[2].sh[2][2] = true;
 	// #
 	// #
 	// #
 	// #
-	rocks[3].id = "tall";
-	rocks[3].wide = 1;
-	rocks[3].tall = 4;
+	rocks[3].id = "rows";
+	rocks[3].cols = 1;
+	rocks[3].rows = 4;
 	rocks[3].lpos = 2;
 	rocks[3].rpos = 2;
 	
-	rocks[3].tops[0] = 4;
-	rocks[3].tops[1] = 0;
-	rocks[3].tops[2] = 0;
-	rocks[3].tops[3] = 0;
-	rocks[3].bots[0] = 0;
-	rocks[3].bots[1] = 0;
-	rocks[3].bots[2] = 0;
-	rocks[3].bots[3] = 0;	
+	zarr(rocks[3].sh);
+	rocks[3].sh[3][0] = true;
+	rocks[3].sh[2][0] = true;
+	rocks[3].sh[1][0] = true;
+	rocks[3].sh[0][0] = true;
+	rocks[3].bpos = 0;
 
 	// ##
 	// ##		
 	rocks[4].id = "box";
-	rocks[4].wide = 2;
-	rocks[4].tall = 2;
+	rocks[4].cols = 2;
+	rocks[4].rows = 2;
 	rocks[4].lpos = 2;
 	rocks[4].rpos = 3;
+	rocks[4].bpos = 0;
 
-	rocks[4].tops[0] = 2;
-	rocks[4].tops[1] = 2;
-	rocks[4].tops[2] = 0;
-	rocks[4].tops[3] = 0;
-	rocks[4].bots[0] = 0;
-	rocks[4].bots[1] = 0;
-	rocks[4].bots[2] = 0;
-	rocks[4].bots[3] = 0;	
+	zarr(rocks[4].sh);
+	rocks[4].sh[1][1] = true;
+	rocks[4].sh[0][1] = true;
+	rocks[4].sh[1][0] = true;
+	rocks[4].sh[0][0] = true;
+	
+	
+	for (int c = 0; c < CH_WIDE; c++)
+		for (int r = 0; r < ch_size; r++)
+			chamber[r][c] = false;
 }
 
 
 
-void add_to_chamber(rock_t &r, bool debug = false)
-{
-	for (int i = 0; i < r.wide; i++)
-	{
-		int ix = i + r.lpos;
-		int old_top = ch_tops[ix];
-		ch_tops[ix] = r.tops[i] + r.bpos;
-		if (ch_top < ch_tops[ix]) ch_top = ch_tops[ix];
-		ch_gaps[ix] = ch_tops[ix] - old_top + ch_bots[i];
-
-	}
-	if (debug) out(r);
-	if (debug) histogram();
-}
-
-bool same_shape(int64_t *s, int64_t *t)
+//
+bool same_shape(uint64_t *s, uint64_t *t)
 {
 	for (int i = 0; i < 7; i++, s++, t++)
 	    if( *s != *t) return false;
 	return true;
 }
 
-int64_t hash_shapes(int64_t *sh)
+uint64_t hash_shapes(uint64_t *sh)
 {
-	int64_t  hs = 0;
+	uint64_t  hs = 0;
 	for (int i = 0; i < 7; i++)
 	{
 		hs <<= 8;
@@ -301,14 +348,16 @@ bool add_shape(sh_t & s, int64_t r, int64_t &index, bool debug = true)
 	{
 		if ( (same_shape(s.sh, shapes[i].sh)  && (r == 2 * shapes[i].r) ) )
 		{
-			if (debug) printf("sh: %ld  at  rock %ld - %ld tall"
-					"  repeats at sh: %ld  at  rock %ld  - %ld tall\n",
+			if (debug) printf("sh: %lu  at  rock %ld - %ld rows"
+					"  repeats at sh: %lu at  rock %ld  - %ld rows\n",
 						hash_shapes(s.sh), s.r, s.height, hash_shapes(shapes[i].sh), shapes[i].r, shapes[i].height);
 			index = i;
 			return true;
 		}
 	}
 	shapes.push_back(s);
+	//printf("Adding::  sh: %lu  at  rock %ld - %ld rows\n",
+	//					hash_shapes(s.sh), s.r, s.height);
 	return false;
 }
 
@@ -316,9 +365,14 @@ bool shape(int64_t r, int64_t &index)
 {
 	sh_t 	s;
 
-	for (int64_t w = 0; w < CH_WIDE; w++)
+	for (int64_t c = 0; c < CH_WIDE; c++)
 	{
-		s.sh[w] =  ch_top - ch_tops[w] + 1;
+		s.sh[c] = 0;
+		for (int64_t r = 0; r < ch_size; r++)
+		{
+			s.sh[c] <<= 1;
+			s.sh[c] += (chamber[r][c] ? 1 : 0);
+		}
 	}
 	return add_shape(s, r, index);
 }
@@ -337,22 +391,27 @@ void excercise(const char *fn, int64_t num_rocks, int64_t &answer, bool trend, b
 	{
 		r = new_rock(numr-1);
 		bool done = false;
-		if (debug) out(r, "New rock");
+		if (debug) {
+			printf("New rock %ld   Jet: %ld\n", numr, jet_index-4);
+			out(r);
+		}
 		while (!done)
 		{
+			done = !movedown(r);
+			if (debug && numr == 29) out(r, "Moving rock down");
+			if (done) break;
 			bool lr = next_jet_right();
-			movelr(r, lr);
-			if (debug)
+			bool mlr = movelr(r, lr);
+			if (debug && numr == 29)
 			{
 				std::string s = "Moving rock ";
 				s += lr ? "Right" : "Left";
+				if (mlr) s += "  SUCCESS"; else s+= "FAIL" ;
 				out(r, s.c_str());
 			}
-			done = !movedown(r);
-			if (debug) out(r, "Moving rock down");
 		}
-		add_to_chamber(r);
-		//out_chamber(15);
+		add_to_chamber(r, debug);
+
 		if (!trend) continue;
 		if ((numr) % (5*jet_count) == 0)
 		{
@@ -372,11 +431,11 @@ void excercise(const char *fn, int64_t num_rocks, int64_t &answer, bool trend, b
 	answer = ch_top;
 }
 
-void solvept2(const char *fn, int64_t num_rocks, int64_t answer)
+void solvept2(const char *fn, int64_t num_rocks, int64_t answer, bool debug = false)
 {
-	excercise(fn, num_rocks, est_answer, true);	// get est answers
+	excercise(fn, num_rocks, est_answer, true, debug);	// get est answers
 	int64_t ex_answer;
-	excercise(fn, excess_height, ex_answer, false); // get add-on answer
+	excercise(fn, excess_height, ex_answer, false, debug); // get add-on answer
 	printf("Rocks at excess: %ld   ex_answer: %ld\n", excess_height, ex_answer);
 	est_answer += ex_answer;
 	
@@ -388,10 +447,10 @@ void solvept2(const char *fn, int64_t num_rocks, int64_t answer)
 		printf("Answer is not correct - should be %ld\n", answer);
 }
 
-void solvept1(const char *fn, int64_t num_rocks, int64_t answer)
+void solvept1(const char *fn, int64_t num_rocks, int64_t answer, bool debug = false)
 {
 	int64_t est_answer;
-	excercise(fn, num_rocks, est_answer, false); // get add-on answer
+	excercise(fn, num_rocks, est_answer, false, debug); // get add-on answer
 	
 	printf("Part 1 Height: %ld\n", est_answer);
 
@@ -403,11 +462,8 @@ void solvept1(const char *fn, int64_t num_rocks, int64_t answer)
 
 int main()
 {
-	solvept2("input.txt", 1000000000000, 1579411764703); // 1579411764703 is too low
+	solvept1(   "ex.txt", 2022, 3068, false);
+	solvept1("input.txt", 2022, 3211, false);
 	solvept2(   "ex.txt", 1000000000000, 1514285714288);
-	return 0;
-	solvept1(   "ex.txt", 2022, 3068);
-	solvept1("input.txt", 2022, 3211);
-	solvept2(   "ex.txt", 1000000000000, 1514285714288);
-	return 0;
+	solvept2("input.txt", 1000000000000, 1589142857183); // 1579411764703 is too low
 }
