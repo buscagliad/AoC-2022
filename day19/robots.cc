@@ -6,20 +6,9 @@
 #include <string>
 
 using namespace std;
- 
-int64_t	ore_robot_ore = 0;	// ore required to build an ore robot
-int64_t clay_robot_ore = 0;	// ore required to build a clay robot
-int64_t obs_robot_ore = 0;	// ore required to build an obsidian robot
-int64_t obs_robot_clay = 0;	// clay required to build an obsidian robot
-int64_t geo_robot_ore = 0;	// ore required to build a geo smashing robot
-int64_t geo_robot_obs = 0;	// obsidian required to build geo smashing robot
-int64_t blueprint = 0;		// current blueprint ID
 
-int64_t max_ore;
-int64_t max_clay;
-int64_t max_obs;
 
-#define MAX_MINUTE 24
+int MAX_MINUTE;
 
 // ::5(3,6,2,0)BO
 
@@ -27,19 +16,7 @@ typedef enum {NONE, ORE, CLAY, OBSIDIAN, GEODE} robo_e;
 
 bool debug = false;
 
-void out()
-{
-	printf(	"Blueprint %ld:\n"
-			"  Each ore robot costs %ld ore. \n"
-			"  Each clay robot costs %ld ore. \n"
-			"  Each obsidian robot costs %ld ore and %ld clay. \n"
-			"  Each geode robot costs %ld ore and %ld obsidian.\n",
-			blueprint, 
-			ore_robot_ore, clay_robot_ore, 
-			obs_robot_ore, obs_robot_clay, 
-			geo_robot_ore, geo_robot_obs);
-	printf("    Max Ore: %ld    Max Clay: %ld   Max Obs: %ld\n", max_ore, max_clay, max_obs);
-}
+
 
 uint64_t master_id = 1;
 
@@ -57,17 +34,62 @@ class robo_state {
 			geo_c = 0;
 
 			minute = 0;
-			path.clear();
 		}
+		
+
+		int64_t getnum(char **s)
+		{
+			char *p = *s;
+			while (!isdigit(*p)) p++;
+			int64_t n = *p - '0';
+			p++;
+			while (isdigit(*p))
+			{
+				n = 10 * n + *p - '0';
+				p++;
+			}
+			*s = p;
+			return n;
+		}
+		
 		robo_state()
 		{
+			clear();
+		}
+		
+		robo_state(char *s)
+		{
+			blueprint = getnum(&s);
+			ore_robot_ore = getnum(&s);
+			clay_robot_ore = getnum(&s);
+			obs_robot_ore = getnum(&s);
+			obs_robot_clay = getnum(&s);
+			geo_robot_ore = getnum(&s);
+			geo_robot_obs = getnum(&s);	
+			
+			max_ore =  std::max(std::max(ore_robot_ore, clay_robot_ore), std::max(obs_robot_ore, geo_robot_ore));
+			max_clay =  obs_robot_clay;
+			max_obs =  geo_robot_obs;
 			clear();		
 		};	
 
+		void bpout()
+		{
+			printf(	"Blueprint %ld:\n"
+					"  Each ore robot costs %ld ore. \n"
+					"  Each clay robot costs %ld ore. \n"
+					"  Each obsidian robot costs %ld ore and %ld clay. \n"
+					"  Each geode robot costs %ld ore and %ld obsidian.\n",
+					blueprint, 
+					ore_robot_ore, clay_robot_ore, 
+					obs_robot_ore, obs_robot_clay, 
+					geo_robot_ore, geo_robot_obs);
+			printf("    Max Ore: %ld    Max Clay: %ld   Max Obs: %ld\n", max_ore, max_clay, max_obs);
+		}
 		void out(const char *s = "", bool bp = false) const
 		{
 
-			printf("== Minute %ld == %s == %s\n", minute, path.c_str(), s);
+			printf("== Minute %ld ==  %s\n", minute, s);
 			if (ore_r)  printf("%ld ore-collecting robot collects %ld ore; you now have %ld ore.\n", ore_r, ore_r, ore_c);
 			if (clay_r) printf("%ld clay-collecting robots collect %ld clay; you now have %ld clay.\n", clay_r, clay_r, clay_c);
 			if (obs_r)  printf("%ld obsidian-collecting robots collect %ld obsidian; you now have %ld obsidian.\n", obs_r, obs_r, obs_c);
@@ -81,10 +103,6 @@ class robo_state {
 			clay_c += clay_r;
 			obs_c += obs_r;
 			geo_c += geo_r;
-			if (debug) path += to_string(minute) + "(" + to_string(ore_r) + ":" + to_string(ore_c) + "," +
-							to_string(clay_r) + ":" + to_string(clay_c) + "," +
-							to_string(obs_r) + ":" + to_string(obs_c) + "," +
-							to_string(geo_r) + ":" + to_string(geo_c) + ") ";
 		};
 
 		bool	buy_ore()
@@ -192,6 +210,7 @@ class robo_state {
 			return false;
 		}
 
+
 		int64_t	ore_r;
 		int64_t ore_c;
 		int64_t	clay_r;
@@ -202,48 +221,40 @@ class robo_state {
 		int64_t geo_c;
 		
 		int64_t minute;
-		std::string path;
+		int64_t	ore_robot_ore = 0;	// ore required to build an ore robot
+		int64_t clay_robot_ore = 0;	// ore required to build a clay robot
+		int64_t obs_robot_ore = 0;	// ore required to build an obsidian robot
+		int64_t obs_robot_clay = 0;	// clay required to build an obsidian robot
+		int64_t geo_robot_ore = 0;	// ore required to build a geo smashing robot
+		int64_t geo_robot_obs = 0;	// obsidian required to build geo smashing robot
+		int64_t blueprint = 0;		// current blueprint ID
+
+		int64_t max_ore;
+		int64_t max_clay;
+		int64_t max_obs;
 };
 
 
 robo_state rmax;
-std::vector<robo_state>	vr[MAX_MINUTE+1];
 
 
-int64_t getnum(char **s)
+
+robo_state init(char *l, bool debug)
 {
-	char *p = *s;
-	while (!isdigit(*p)) p++;
-	int64_t n = *p - '0';
-	p++;
-	while (isdigit(*p))
-	{
-		n = 10 * n + *p - '0';
-		p++;
-	}
-	*s = p;
-	return n;
-}
-
-void init (char *l, bool debug)
-{
-	blueprint = getnum(&l);
-	ore_robot_ore = getnum(&l);
-	clay_robot_ore = getnum(&l);
-	obs_robot_ore = getnum(&l);
-	obs_robot_clay = getnum(&l);
-	geo_robot_ore = getnum(&l);
-	geo_robot_obs = getnum(&l);	
-	for (int i = 0; i <= MAX_MINUTE; i++) 
-	{
-		vr[i].clear(); 
-	}
+//	blueprint = getnum(&l);
+//	ore_robot_ore = getnum(&l);
+//	clay_robot_ore = getnum(&l);
+//	obs_robot_ore = getnum(&l);
+//	obs_robot_clay = getnum(&l);
+//	geo_robot_ore = getnum(&l);
+//	geo_robot_obs = getnum(&l);	
 	rmax.clear();
-	
-	max_ore =  std::max(std::max(ore_robot_ore, clay_robot_ore), std::max(obs_robot_ore, geo_robot_ore));
-	max_clay =  obs_robot_clay;
-	max_obs =  geo_robot_obs;
-	if (debug) out();
+	robo_state r(l);
+//	max_ore =  std::max(std::max(ore_robot_ore, clay_robot_ore), std::max(obs_robot_ore, geo_robot_ore));
+//	max_clay =  obs_robot_clay;
+//	max_obs =  geo_robot_obs;
+	if (false) r.out();
+	return r;
 }
 
 //
@@ -260,6 +271,8 @@ void init (char *l, bool debug)
 
 void	get_max_geodes(robo_state r, robo_e action)
 {
+	// check if it is possible to beat the high score
+	// 
 	switch(action)
 	{
 		case ORE: 		if (!r.should_buy_ore()) return; break;
@@ -321,19 +334,20 @@ bool solvept1(const char *fn, int64_t answer)
 	FILE *f = fopen(fn, "r");
 	int64_t qual_level = 0;
 	char robline[MAXLINE];
+	MAX_MINUTE = 24;
 	while (!feof(f))
 	{
-		robo_state r;
 		fgets(robline, MAXLINE, f);
 		if (feof(f)) break;
-		init(robline, false);
+		robo_state r = init(robline, false);
+		//r.bpout();
 		// added this loop at start as it seeds which robot is bought first
 		for (int e = (int) ORE; e <= (int) GEODE; e++)
 			get_max_geodes(r, (robo_e) e);
 		int64_t mg = rmax.geo_c;
-		if (debug) printf("\n\nGEO Objects for blueprint %ld\n", blueprint);
+		if (debug) printf("\n\nGEO Objects for blueprint %ld\n", r.blueprint);
 
-		qual_level += mg * blueprint;
+		qual_level += mg * r.blueprint;
 		if (debug) printf("\n\n");
 	}
 	fclose(f);
@@ -349,10 +363,46 @@ bool solvept1(const char *fn, int64_t answer)
 	return false;
 }
 
+bool solvept2(const char *fn, int64_t answer)
+{
+	FILE *f = fopen(fn, "r");
+	int64_t qual_level = 1;
+	char robline[MAXLINE];
+	MAX_MINUTE = 32;
+	bool done = false;
+	while (!done)
+	{
+		fgets(robline, MAXLINE, f);
+		if (feof(f)) break;
+		robo_state r = init(robline, false);
+		//r.bpout();
+		// added this loop at start as it seeds which robot is bought first
+		for (int e = (int) ORE; e <= (int) GEODE; e++)
+			get_max_geodes(r, (robo_e) e);
+		int64_t mg = rmax.geo_c;
+		if (debug) printf("\n\nGEO Objects for blueprint %ld\n", r.blueprint);
+
+		qual_level *= mg;
+		if (debug) printf("\n\n");
+		if (feof(f) || (r.blueprint == 3)) done = true;
+	}
+	fclose(f);
+	printf("File: %s\nPart 1 Quality level: %ld\n", fn, qual_level);
+
+	if (qual_level == answer)
+	{
+		printf("Answer is correct!!!\n\n");
+		return true;
+	}
+	else
+		printf("Answer is not correct - should be %ld\n\n", answer);
+	return false;
+}
 
 int main()
 {
 	solvept1("ex.txt", 33);
-	solvept1("input.txt", 1599); // 4650 is too HIGH, 1475 is too low
+	solvept1("input.txt", 1599); 
+	solvept2("input.txt", 14112); 
 }
 
