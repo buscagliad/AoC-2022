@@ -6,333 +6,156 @@
 #include <string>
 
 using namespace std;
-#define MAXX 200
-#define MAXY 200
+#define MAXX 155
+#define MAXY 23
 
-typedef enum {STAY=0, NORTH=1, EAST=2, SOUTH=4, WEST=8, WALL=100} dir_e;
+typedef enum {STAY=0, UP=1, RIGHT=2, DOWN=4, LEFT=8, WALL=64} dir_e;
 
-typedef struct {
-	bool    occupied;
-	char	letter;
-	dir_e	d;	// direction to move point
-} gPoint;
 
 int num_movements = 0;
 
-const char *dirAsc(dir_e e)
+const char *dirAsc(int e)
 {
 	switch(e)
 	{
-		case  WEST: return "WEST";
-		case  EAST: return "EAST";
-		case SOUTH: return "SOUTH";
-		case NORTH: return "NORTH";
+		case LEFT:  return "LEFT";
+		case RIGHT: return "RIGHT";
+		case DOWN:  return "DOWN";
+		case UP:    return "UP";
 		case STAY:  return "STAY";
+		case WALL:  return "WALL";
 	}
 	return "ERROR";
 }
-const char dirChar(dir_e e)
+
+char dirChar(int e)
 {
 	switch(e)
 	{
-		case  WEST: return 'W';
-		case  EAST: return 'E';
-		case SOUTH: return 'S';
-		case NORTH: return 'N';
+		case LEFT:  return 'W';
+		case RIGHT: return 'E';
+		case DOWN:  return 'S';
+		case UP:    return 'N';
 		case STAY:  return '.';
+		case WALL:  return '#';
 	}
 	return 'X';
 }
 
-dir_e order[] = {NORTH, SOUTH, WEST, EAST};
-int roundNumber = 0;
+char exChar(int e)
+{
+	if (e == LEFT)  return '<';
+	if (e == RIGHT) return '>';
+	if (e == DOWN)  return 'v';
+	if (e == UP)    return '^';
+	if (e == STAY)  return '.';
+	if (e == WALL)  return '#';
+	// we get here if more that one blizzard is present
+	int c = 0;
+	c += e & LEFT ? 1 : 0;
+	c += e & RIGHT ? 1 : 0;
+	c += e & DOWN ? 1 : 0;
+	c += e & UP ? 1 : 0;
+	return '0' + c;
+	
+}
 
-gPoint	gmap[MAXX];
-int	basin[MAXX][MAXY];
-int minute[MAXX][MAXY];		// number of minutes to get to x,y		
+dir_e order[] = {UP, DOWN, LEFT, RIGHT};
+
+typedef struct {
+	char b[MAXX][MAXY];
+	int  x;
+	int  y;
+	int  minute;
+} bstate;
+
+bstate	basin;
+int		minutes[MAXX][MAXY];		// number of minutes to get to x,y		
+
 
 int xpts = 0;
 int ypts = 0;
 
-// NOTE: border at column 0, column xpts
-//                 row 0, row ypts
-#define has_neighbor(pts, x, y)   pts[x-1][y-1].occupied || pts[x][y-1].occupied || pts[x+1][y-1].occupied || \
-						          pts[x-1][y].occupied   ||                         pts[x+1][y].occupied   || \
-					              pts[x-1][y+1].occupied || pts[x][y+1].occupied || pts[x+1][y+1].occupied
-
-
-void zerominute()
+char getbs(bstate &bs, int i, int j)
 {
-	for (int i = 0; i < MAXX; i++)
-	{
-	    for (int j = 0; j < MAXY; j++)
-	    {
-	        minute[i][j] = 0;
-	    }
-	 }
+	if (i <= 0) i = xpts - 2;
+	else if (i >= xpts - 1) i = 1;
+	if (j <= 0) j = ypts - 2;
+	else if (j >= ypts - 1) j = 1;
+	return bs.b[i][j];
 }
 
-void incminute(gPoint g[MAXX][MAXY])
-{
-	for (int i = 0; i < MAXX; i++)
-	{
-	    for (int j = 0; j < MAXY; j++)
-	    {
-			switch(g[i][j].d)
-			{
-				case  WEST: minute[i-1][j]++;break;
-				case  EAST: minute[i+1][j]++;break;
-				case SOUTH: minute[i][j+1]++;break;
-				case NORTH: minute[i][j-1]++;break;
-				case STAY:  break;
-			}
-	    }
-	 }
-}
-	
+#define	GETBS(a,b,d)	if (getbs(bs, a, b) & d) {													\
+							rs |= d;																\
+							if (debug) printf("at (%d,%d) storm is heading %s - INCLUDED\n", a, b, dirAsc(getbs(bs, a, b))); \
+						} 																			\
+						else 																		\
+						{																			\
+							if (debug) printf("at (%d,%d) storm is heading %s - EXCLUDED\n", a, b, dirAsc(getbs(bs, a, b))); \
+						}
 
-int	gridcount(gPoint g[MAXX][MAXY])
+char step(bstate &bs, int i, int j, bool debug = false)
 {
-	int sum = 0;
-	for (int i = 0; i < MAXX; i++)
+	char rs = 0;
+	if (debug) printf("Examining cell %d,%d\n", i, j);
+	GETBS(i-1,j,RIGHT);
+	GETBS(i+1,j,LEFT);
+	GETBS(i,j-1,DOWN);
+	GETBS(i,j+1,UP);
+	if (debug) printf("\n");
+	return rs;
+}
+
+void blizzard_update(bstate &bs)
+{
+	bstate nbs = bs;
+	nbs.minute++;
+	for (int i = 1; i < xpts - 1; i++)
 	{
-	    for (int j = 0; j < MAXY; j++)
+		for (int j = 1; j < ypts - 1; j++)
 		{
-			if(g[i][j].occupied) sum++;
+			nbs.b[i][j] = step(bs, i, j);
 		}
 	}
-	return sum;
+	bs = nbs;
+}
+
+bool update(bstate &bs)
+{
+	blizzard_update(bs);
+	return true;
 }
 
 
-
-void setminmax(gPoint g[MAXX][MAXY])
+void initminute()
 {
-	xmin = MAXX;
-	xmax = 0;
-	ymin = MAXY;
-	ymax = 0;
 	for (int i = 0; i < MAXX; i++)
+	{
 	    for (int j = 0; j < MAXY; j++)
 	    {
-	        if (g[i][j].occupied)
-	        {
-				if (xmin > i) xmin = i;
-				if (xmax < i) xmax = i;
-				if (ymin > j) ymin = j;
-				if (ymax < j) ymax = j;
-			}
+	        minutes[i][j] = -1;
 	    }
+	 }
 }
 
-void outgrid(gPoint g[MAXX][MAXY], bool simple=true)
+
+
+void outgrid(bstate &b, bool EWNS = false)
 {
 
-	printf("GRID  X: [%d .. %d]  Y: [%d .. %d]  -- %d elves\n", xmin, xmax, ymin, ymax, gridcount(g));
-	for (int y = ymin; y <= ymax; y++)
+	printf("Minute: %d  [%d,%d]\n", b.minute, xpts, ypts);
+	for (int y = 0; y < ypts; y++)
 	{
-		for (int x = xmin; x <= xmax; x++)
+		for (int x = 0; x < xpts; x++)
 		{
-			if (simple) printf("%c", g[x][y].letter);
-			else printf("%c", dirChar(g[x][y].d));
+			if (EWNS) printf("%c", dirChar(b.b[x][y]));
+			else printf("%c", exChar(b.b[x][y]));
 		}
 		printf("\n");
 	}
 	printf("\n");
 }
 
-
-//  ----- x positive (EAST) ----->
-//  <---- x negative (WEST) -----
-//             /\       |
-//             |		|
-//  y (NORTH)  |		| y (SOUTH)
-//   negative  |		| positive
-//             |		|
-//             |		|
-//                      \/
-
-
-//            NW     N     NE
-//           
-//           
-//            W      *      E
-//           
-//           
-//            SW     S     SE
-//  
-
-
-dir_e getDir(gPoint g[MAXX][MAXY], int x, int y)
-{
-	
-	if (!(has_neighbor(g, x, y))) 
-	{
-		//printf("%c %d,%d has no neighbor\n", g[x][y].letter, x, y); 
-		return STAY; 
-	}
-	
-	for (int i = 0; i < 4; i++)
-	{
-		dir_e ord = order[(i + roundNumber) % 4];
-		switch (ord) {
-			case NORTH:  // NW  N  NE
-				if (! (g[x-1][y-1].occupied || g[x][y-1].occupied || g[x+1][y-1].occupied) )
-					return NORTH;
-				break;
-			case SOUTH:  // SW  S  SE
-				if (! (g[x-1][y+1].occupied || g[x][y+1].occupied || g[x+1][y+1].occupied) ) 
-					return SOUTH; 
-				break;
-			case WEST:   // NW  W  SW
-				if (! (g[x-1][y-1].occupied || g[x-1][y].occupied || g[x-1][y+1].occupied) ) 
-					return WEST; 
-				break;
-			case EAST:   // NE  E  SE
-				if (! (g[x+1][y-1].occupied || g[x+1][y].occupied || g[x+1][y+1].occupied) ) 
-					return EAST;
-				break;
-			case STAY:
-				printf("WHAT %d,%d\n", x, y);
-				return STAY;	// this is an ERROR!!!
-		}
-	}
-	//printf("%c %d,%d no possible moves\n", g[x][y].letter, x, y); 
-	return STAY;
-}
-
-void mod_pt(gPoint p[MAXX][MAXY], int x, int y, int dx, int dy);
-
-bool move_pt(gPoint pts[MAXX][MAXY], int x, int y)
-{
-	switch(pts[x][y].d)
-	{
-		case STAY: return false;  // do nothing
-		case EAST:
-			mod_pt(pts, x, y, 1, 0);
-			return true;
-		case WEST:
-			mod_pt(pts, x, y, -1, 0);
-			return true;
-		case NORTH:
-			mod_pt(pts, x, y, 0, -1);
-			return true;
-		case SOUTH:
-			mod_pt(pts, x, y, 0, 1);
-			return true;
-	}
-	return false;
-}
-
-	
-
-
-void mod_pt(gPoint p[MAXX][MAXY], int x, int y, int dx, int dy)
-{
-	int newx = x+dx;
-	int newy = y+dy;
-	if (minute[newx][newy] > 1)
-	{
-		p[x][y].d = STAY;
-		//printf("%c - Avoiding collision (grid: %d) moving to %d,%d\n", p[x][y].letter, minute[newx][newy], newx, newy);
-		return;
-	}
-	if (p[newx][newy].occupied)
-	{
-		//printf("%c  cannot move - space occupied %d,%d\n", p[x][y].letter, newx, newy);
-		move_pt(p, newx, newy);
-	}
-	if (p[newx][newy].occupied)
-	{
-		//printf("WHAT THE F?? %d,%d\n", newx, newy);
-	}
-	//printf("%c %d,%d moving to %d,%d\n", p[x][y].letter, x, y, newx, newy); 
-	p[x][y].occupied = false;
-	p[x][y].d = STAY;
-	p[newx][newy].occupied = true;
-	p[newx][newy].d = STAY;
-	p[newx][newy].letter = p[x][y].letter;
-	p[x][y].letter = ' ';
-	num_movements++;
-	if (newx < xmin) xmin = newx;
-	if (newx > xmax) xmax = newx;
-	if (newy < ymin) ymin = newy;
-	if (newy > ymax) ymax = newy;
-}
-
-void stay(gPoint g[MAXX][MAXY])
-{
-	for (int i = 0; i < MAXX; i++)
-	{
-		for (int j = 0; j < MAXY; j++)
-		{
-			g[i][j].d = STAY;
-		}
-	}
-}
-			
-
-//
-// update will go through the entire grid and
-// determine the desired direction that the elve
-// wants to move - it DOES NOT MOVE THEM
-//
-void update(gPoint g[MAXX][MAXY])
-{
-	int cxmin = xmin;
-	int cxmax = xmax;
-	int cymin = ymin;
-	int cymax = ymax;
-	zerominute();
-	stay(g);
-	for (int i = cxmin; i <= cxmax; i++)
-	{
-		for (int j = cymin; j <= cymax; j++)
-		{
-			if (g[i][j].occupied)
-			{
-				g[i][j].d = getDir(g, i, j);
-				//printf("%d,%d going %s\n", i, j, dirAsc(g[i][j].d));
-			}
-		}
-	}
-	incminute(g);
-}
-//
-// execute will go through the entire grid and
-// move the elves as required by 'update'
-//
-void execute(gPoint pts[MAXX][MAXY])
-{
-	int cxmin = xmin;
-	int cxmax = xmax;
-	int cymin = ymin;
-	int cymax = ymax;
-	for (int i = cxmin; i <= cxmax; i++)
-	{
-		for (int j = cymin; j <= cymax; j++)
-		{
-			move_pt(pts, i, j);
-		}
-	}	
-}
-
-int  do_round(gPoint pts[MAXX][MAXY])
-{
-	num_movements = 0;
-	update(pts);
-	execute(pts);
-	setminmax(pts);
-	roundNumber++;
-	return gridcount(pts);
-}
-	
-	
-	
-#define BLANK '.'
-#define MARK  '#'
-
-int inf_value = BLANK;
 
 #define MAXLINE 1000
 ///////////////////////////////////////////////////////////////////
@@ -341,16 +164,12 @@ int inf_value = BLANK;
 
 
 
-void clear(gPoint g[MAXX][MAXY])
+void clear(bstate &b)
 {
-	xmax = 0;
-	ymax = 0;
 	for (int i = 0; i < MAXX; i++)
 	    for (int j = 0; j < MAXY; j++)
 	    {
-	        g[i][j].occupied = false;
-	        g[i][j].letter = ' ';
-	        g[i][j].d = STAY;
+	        b.b[i][j] = STAY;
 	    }
 }
 			
@@ -365,94 +184,128 @@ bool parseline(FILE *f)
 
 	fgets(s, MAXLINE, f);
 	if (feof(f)) return false;
-	ymax++;
-	for (int i = 0; i < (int) strlen(s); i++)
+	int slen = strlen(s);
+	if (xpts < slen-1) { xpts = slen-1; printf("xpts = %d\n", xpts); }
+	for (int i = 0; i < slen; i++)
 	{
-	    if (s[i] == '#')
-	    {
-			g[xmin + i][ymax].occupied = true;
-			g[xmin + i][ymax].letter = letter;
-			letter++; if (letter > 'Z') letter = 'A';
+		switch(s[i])
+		{
+			case '#': basin.b[i][ypts] = WALL;  break;
+			case '>': basin.b[i][ypts] = RIGHT; break;
+			case '<': basin.b[i][ypts] = LEFT;  break;
+			case '^': basin.b[i][ypts] = UP;    break;
+			case 'v': basin.b[i][ypts] = DOWN;  break;
+			case '.': basin.b[i][ypts] = 0;     break;
+			case '\n': continue;
 		}
 
-	    if (xmin + i > xmax) xmax = xmin + i;
 	}
+	ypts++;
 	return true;
 }
 	
 void init(const char *fn)
 {
-	//roundNumber = 0;
-	clear(g);
-	xmin = 500; // room to grow
-	ymin = 500;	// room to grow
-	xmax = xmin;
-	ymax = ymin;
+	clear(basin);
+	xpts = 0; 
+	ypts = 0;
 	FILE *f = fopen(fn, "r");
-	while (parseline(f, g));
+	while (parseline(f));
 	fclose(f);
-	setminmax(g);
 }
 
-void solvept1(const char *v, int true_spaces)
+bool procede(bstate &bs, int x, int y)
 {
-	init(v, basin);
+	printf("Proceding to %d,%d ", x, y);
+	const char *freason;
+	bool rv = false;
+	if (x < 1) {rv = false; freason = "x < 1";}
+	else if (y < 1) {rv = false; freason = "y < 1";}
+	else if (x > xpts - 2) {rv = false; freason = "x > xpts-2";}
+	else if (y > ypts - 2) {rv = false; freason = "y > ypts-2";}
+	else if (bs.b[x][y] == STAY) {
+		rv = true;
+		if (minutes[x][y] == -1) minutes[x][y] = bs.minute;
+		if (minutes[x][y] > bs.minute)
+		{
+			minutes[x][y] = bs.minute;
+		}
+
+	}
+	else
+		freason = "NO STAY";
+		
+	if (!rv) printf("FAIL - %s\n", freason);
+	else printf("SUCCESS\n");
+	return rv;
+}
+
+void traverse(bstate bs, int x, int y)
+{
+	printf("[%d] Traversing from %d,%d\n", bs.minute, x, y);
+	//if (minutes[x][y] != -1 && bs.minute > minutes[x][y]) return;
+	update(bs);
+	if (procede(bs, x+1, y)) traverse(bs, x+1, y); // move RIGHT
+	if (procede(bs, x-1, y)) traverse(bs, x-1, y); // move LEFT
+	if (procede(bs, x, y+1)) traverse(bs, x, y+1); // move DOWN
+	if (procede(bs, x, y-1)) traverse(bs, x, y-1); // move UP
+	traverse(bs, x, y);	// STAY
+}
+
+void solvept1(const char *v, int solution)
+{
+	init(v);
 
 	printf("Input file: %s\n", v);
-	//outgrid(basin);
-	int NUM_ROUNDS = 10;
-	roundNumber = 0;
-	for (int i = 0; i < NUM_ROUNDS; i++)
+
+	int	num_spaces = 0;
+	update(basin);
+	if (procede(basin, 1, 1))
+		traverse(basin, 1, 1);
+	else
+		printf("ERROR initialization\n");
+	num_spaces = minutes[xpts-1][ypts-2];
+	printf("Number of minutes to traverse: %d\n", num_spaces);
+	if (solution > 0)
 	{
-		do_round(basin);
-//		printf("\n\nRound: %d\n", roundNumber);
-//		outgrid(basin);
-	}
-	int num_elves = gridcount(basin);
-	int num_spaces = (xmax-xmin+1)*(ymax-ymin+1) - num_elves;
-	printf("Number of open spaces: %d\n", num_spaces);
-	if (true_spaces > 0)
-	{
-		if (num_spaces != true_spaces)
-			printf("ERROR - light count does not agree with truth: %d!\n", true_spaces);
+		if (num_spaces != solution)
+			printf("ERROR - traverse time does not agree with truth: %d!\n", solution);
 		else
-			printf("Successfully counted spaces!!\n");
+			printf("Successfully found minimal traverse time!!\n");
 	}
 
 }
 
-void solvept2(const char *v, int num_rounds)
+
+void solvept2(const char *v, int solution)
 {
-	init(v, basin);
+	init(v);
 
 	printf("Input file: %s\n", v);
-	//outgrid(basin);
-	num_movements = 10;
-	roundNumber = 0;
+	outgrid(basin);
+	int num_minutes = 10;
 	while (num_movements)
 	{
-		do_round(basin);
-		//printf("Round: %d   Num Movements: %d\n", roundNumber, num_movements);
-		//printf("\n\nRound: %d\n", roundNumber);
 		//outgrid(basin);
 	}
-	printf("Number of rounds: %d\n", roundNumber);
-	if (num_rounds > 0)
+	printf("Number of minutes to traverse: %d\n", num_minutes);
+	if (solution > 0)
 	{
-		if (num_rounds != roundNumber)
-			printf("ERROR - light count does not agree with truth: %d!\n", num_rounds);
+		if (solution != num_minutes)
+			printf("ERROR - traverse time does not agree with truth: %d!\n", solution);
 		else
-			printf("Successfully counted spaces!!\n");
+			printf("Successfully found minimal traverse time!!\n");
 	}
 
 }
 
 int main(int argc, char **argv)
 {
-	solvept1("ex.txt", 110);
-	solvept1("input.txt", 3906);
-	solvept2("ex.txt", 20);
-	solvept2("input.txt", 895);
+	//solvept1("ex2.txt", 18);
+	solvept1("ex.txt", 18);
+	//solvept1("input.txt", 1000);
+	//solvept2("ex.txt", 20);
+	//solvept2("input.txt", 895);
 	return 1;
 }
 
