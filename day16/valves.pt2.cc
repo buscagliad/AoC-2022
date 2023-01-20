@@ -155,7 +155,6 @@ void turn_on_valve(vector<valve> &v, path_state &ps, int ix)
 	if ( (v[ix].flow == 0) || ps.openvalves.find(v[ix].nm) != string::npos) return;
 
 	ps.openvalves += " " + v[ix].nm;
-
 	ps.valves_left_to_open--;
 	//ps.pressure += v[ix].flow;	
 	ps.new_pressure += v[ix].flow;	
@@ -206,7 +205,7 @@ void		next_move(vector<valve> &v, path_state ps)
 	path_state pnn = ps;
 	path_state pyn = ps;
 	// move me
-	if ( ix1 != ix2 && ix2 >= 0 && (v[ix2].flow > 0) && ps.openvalves.find(v[ix2].nm) == string::npos) valve2 = true;
+	if ( (v[ix2].flow > 0) && ps.openvalves.find(v[ix2].nm) == string::npos) valve2 = true;
 	// move elephant
 	path_state pny = ps;
 	path_state pyy = ps;
@@ -214,40 +213,37 @@ void		next_move(vector<valve> &v, path_state ps)
 	// turn on both valves
 	if (valve1 && valve2)
 	{
-		//pyy.minute++;
+		pyy.minute++;
 		turn_on_valve(v, pyy, ix1);
 		turn_on_valve(v, pyy, ix2); 
+		pyy.prevvalve1 = ix1;
+		pyy.prevvalve2 = ix2;
 		next_move(v, pyy);
 	}		
 	//
 	// turn on valve 1 - move path2 to each possible square
 	if (valve1 && !valve2)
 	{
-		//pyn.minute++;
+		pyn.minute++;
 		turn_on_valve(v, pyn, ix1); 
-		if (ix2 >= 0)
+		pyn.prevvalve1 = ix1;
+		for (int i = 0; i < (int)v[ix2].tunnels.size(); i++)
 		{
-			for (int i = 0; i < (int)v[ix2].tunnels.size(); i++)
-			{
-				//if (v[ix2].tunix[i] == pyn.prevvalve2) continue;
-				path_state p = pyn;
+			//if (v[ix2].tunix[i] == pyn.prevvalve2) continue;
+			path_state p = pyn;
 				
-				p.atvalve2 = v[ix2].tunix[i];
-				p.prevvalve2 = ix2;
-				next_move(v, p);
-			}		
-		}
-		else
-		{
-			next_move(v, pyn);
+			p.atvalve2 = v[ix2].tunix[i];
+			p.prevvalve2 = ix2;
+			next_move(v, p);
 		}
 	}
 	//
 	// turn on valve 2 - move path1 to each possible square
 	if (!valve1 && valve2)
 	{
-		//pny.minute++;
+		pny.minute++;
 		turn_on_valve(v, pny, ix2);
+		pny.prevvalve2 = ix1;
 		
 		for (int i = 0; i < (int)v[ix1].tunnels.size(); i++)
 		{
@@ -269,22 +265,14 @@ void		next_move(vector<valve> &v, path_state ps)
 		//if (v[ix1].tunix[i] == pnn.prevvalve1) continue;
 		pnn.atvalve1 = v[ix1].tunix[i];
 		pnn.prevvalve1 = ix1;
-		if (ix2 >= 0)
+		for (int j = 0; j < (int)v[ix2].tunnels.size(); j++)
 		{
-
-			for (int j = 0; j < (int)v[ix2].tunnels.size(); j++)
-			{
-				//if (v[ix2].tunix[j] == pnn.prevvalve2) continue;
-				path_state p = pnn;
-				
-				p.atvalve2 = v[ix2].tunix[j];
-				p.prevvalve2 = ix2;
-				next_move(v, p);
-			}
-		}
-		else
-		{
-			next_move(v, pnn);
+			//if (v[ix2].tunix[j] == pnn.prevvalve2) continue;
+			path_state p = pnn;
+			
+			p.atvalve2 = v[ix2].tunix[j];
+			p.prevvalve2 = ix2;
+			next_move(v, p);
 		}
 	}
 
@@ -422,6 +410,27 @@ void solvept2(const char *fn, int answer)
 	ps.valves_left_to_open = numGTzero(volcano);
 	setflows(volcano, ps);
 	int aa = nm_index(volcano, "AA");
+	
+	if (1)
+	{
+    MinutesToRun = 26;
+		ps.minute = 10;
+		ps.pressure = 78;
+		ps.new_pressure = 0;
+		ps.total = 414;
+		ps.openvalves = "DD JJ BB HH CC";
+		ps.valves_left_to_open = 1;
+		ps.prevvalve1 = aa;
+		ps.atvalve1 = nm_index(volcano, "AA");
+		ps.prevvalve2 = aa;
+		ps.atvalve2 = nm_index(volcano, "FF");
+		ps.flows_remaining[0] = 3;
+		next_move(v, ps);
+		printf("\n\ngPath\n");
+		outps(maxps);
+		printf("Flow: %d\n", maxps.pressure);
+		exit(1);
+	}		
 
 	outps(ps);
     MinutesToRun = 26;

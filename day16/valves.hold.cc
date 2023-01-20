@@ -78,8 +78,6 @@ typedef struct valve_s {
 	valve_state state;
 } valve;
 
-int MaxPressure[MAX_MINUTE+1];
-
 vector<valve> volcano;
 
 bool bigger (int a, int b) { return a > b; }
@@ -171,21 +169,21 @@ void turn_on_valve(vector<valve> &v, path_state &ps, int ix)
 path_state maxps;
 int earlyminute = 40;
 
-void		next_move(vector<valve> &v, path_state ps, int find_quick_path = 30)
+void		next_move(vector<valve> &v, path_state ps)
 {
 	ps.minute++;
-//	if (max_remaining(ps) < maxps.total) return;
 	ps.total += ps.pressure;
 	ps.pressure += ps.new_pressure;
 	ps.new_pressure = 0;
-	if (ps.valves_left_to_open == 0)
+	if (max_remaining(ps) < maxps.total) return;
+	if ( (ps.valves_left_to_open == 0) && (ps.minute < MinutesToRun) )
 	{
 		if (ps.minute < earlyminute)
 		{
 			earlyminute = ps.minute;
 			printf("Early minute: %d   pressure: %d   total: %d  remain: %d\n", earlyminute, ps.pressure, ps.total, (MinutesToRun-ps.minute)*ps.pressure);
 		}
-		ps.total += ps.pressure * (MinutesToRun - ps.minute - 1);
+		ps.total += ps.pressure * (MinutesToRun - ps.minute);
 		ps.minute = MinutesToRun;
 	}
 	if (ps.minute == MinutesToRun && maxps.total < ps.total) 
@@ -231,6 +229,7 @@ void		next_move(vector<valve> &v, path_state ps, int find_quick_path = 30)
 		{
 			for (int i = 0; i < (int)v[ix2].tunnels.size(); i++)
 			{
+				//if (v[ix2].tunix[i] == pyn.prevvalve2) continue;
 				path_state p = pyn;
 				
 				p.atvalve2 = v[ix2].tunix[i];
@@ -253,7 +252,7 @@ void		next_move(vector<valve> &v, path_state ps, int find_quick_path = 30)
 		for (int i = 0; i < (int)v[ix1].tunnels.size(); i++)
 		{
 			path_state p = pny;
-			if (v[ix1].tunix[i] == p.prevvalve1) continue;
+			//if (v[ix1].tunix[i] == p.prevvalve1) continue;
 			p.atvalve1 = v[ix1].tunix[i];
 			p.prevvalve1 = ix1;
 			next_move(v, p);
@@ -263,11 +262,11 @@ void		next_move(vector<valve> &v, path_state ps, int find_quick_path = 30)
 	
 	//
 	// if both valve1 and valve2 have not been opened
-    if (valve1 || valve2) return;
+   // if (valve1 || valve2) return;
 	//pnn.minute++;
 	for (int i = 0; i < (int)v[ix1].tunnels.size(); i++)
 	{
-		if (v[ix1].tunix[i] == pnn.prevvalve1) continue;
+		//if (v[ix1].tunix[i] == pnn.prevvalve1) continue;
 		pnn.atvalve1 = v[ix1].tunix[i];
 		pnn.prevvalve1 = ix1;
 		if (ix2 >= 0)
@@ -275,7 +274,7 @@ void		next_move(vector<valve> &v, path_state ps, int find_quick_path = 30)
 
 			for (int j = 0; j < (int)v[ix2].tunnels.size(); j++)
 			{
-				if (v[ix2].tunix[j] == pnn.prevvalve2) continue;
+				//if (v[ix2].tunix[j] == pnn.prevvalve2) continue;
 				path_state p = pnn;
 				
 				p.atvalve2 = v[ix2].tunix[j];
@@ -385,10 +384,7 @@ void solvept1(const char *fn, int answer)
 	outps(ps);
     MinutesToRun = 30;
     maxps = ps;
-    for (size_t i = 0; i <= MAX_MINUTE; i++)
-    {
-		MaxPressure[i] = 0;
-	}
+
 	for (size_t m = 0; m < volcano[aa].tunix.size(); m++)
 	{
 		path_state nps = ps;
@@ -430,10 +426,7 @@ void solvept2(const char *fn, int answer)
 	outps(ps);
     MinutesToRun = 26;
     maxps = ps;
-    for (size_t i = 0; i <= MAX_MINUTE; i++)
-    {
-		MaxPressure[i] = 0;
-	}
+
 	for (size_t k = 0; k < volcano[aa].tunix.size() - 1; k++)
 	{
 		for (size_t m = k+1; m < volcano[aa].tunix.size(); m++)
@@ -463,7 +456,7 @@ int main()
 	//solvept11("ex.txt", 1651);
 	//solvept1("input.txt", 1906);  
 	solvept2("ex.txt", 1707);
-	//solvept2("input.txt", 2548);
+	solvept2("input.txt", 2548);
 	return 0;
 }
 
