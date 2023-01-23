@@ -9,10 +9,26 @@ using namespace std;
 #define MAXX 155
 #define MAXY 23
 
+typedef struct {
+	bool check[MAXX][MAXY];
+}bmap_t;
+
+vector<bmap_t> bmap_time;	// bmap_time[t][x][y] is true, we have already been at x,y at time t - 
+							// we don't have to do this again
+							
+void clear(bmap_t &b)
+{
+	for (int i = 0; i < MAXX; i++)
+	    for (int j = 0; j < MAXY; j++)
+			b.check[i][j] = false;
+}
+
 typedef enum {STAY=0, UP=1, RIGHT=2, DOWN=4, LEFT=8, WALL=64} dir_e;
 
 
 int num_movements = 0;
+int path_solution = 999999999;
+bool debug = false;
 
 const char *dirAsc(int e)
 {
@@ -64,24 +80,43 @@ dir_e order[] = {UP, DOWN, LEFT, RIGHT};
 
 typedef struct {
 	char b[MAXX][MAXY];
-	int  x;
-	int  y;
+	int  xpts;
+	int  ypts;
 	int  minute;
 } bstate;
 
-bstate	basin;
+vector<bstate> allbasins;
 int		minutes[MAXX][MAXY];		// number of minutes to get to x,y		
 
 
-int xpts = 0;
-int ypts = 0;
+//int xpts = 0;
+//int ypts = 0;
+
+
+void outgrid(bstate &b, int Ex = -5, int Ey =-5, bool EWNS = false)
+{
+
+	printf("Minute: %d  [%d,%d]\n", b.minute, b.xpts, b.ypts);
+	for (int y = 0; y < b.ypts; y++)
+	{
+		for (int x = 0; x < b.xpts; x++)
+		{
+			if (Ex == x && Ey == y) printf("E");
+			else if (EWNS) printf("%c", dirChar(b.b[x][y]));
+			else printf("%c", exChar(b.b[x][y]));
+		}
+		printf("\n");
+	}
+	printf("\n");
+}
+
 
 char getbs(bstate &bs, int i, int j)
 {
-	if (i <= 0) i = xpts - 2;
-	else if (i >= xpts - 1) i = 1;
-	if (j <= 0) j = ypts - 2;
-	else if (j >= ypts - 1) j = 1;
+	if (i <= 0) i = bs.xpts - 2;
+	else if (i >= bs.xpts - 1) i = 1;
+	if (j <= 0) j = bs.ypts - 2;
+	else if (j >= bs.ypts - 1) j = 1;
 	return bs.b[i][j];
 }
 
@@ -106,23 +141,36 @@ char step(bstate &bs, int i, int j, bool debug = false)
 	return rs;
 }
 
-void blizzard_update(bstate &bs)
+void blizzard_update(bstate &bs, int minute)
 {
-	bstate nbs = bs;
-	nbs.minute++;
-	for (int i = 1; i < xpts - 1; i++)
+	if (minute < (int) allbasins.size()) {
+		bs = allbasins[minute];
+		return;
+	}
+	if (minute > (int) allbasins.size())
 	{
-		for (int j = 1; j < ypts - 1; j++)
+		printf("ERROR - minute: %d   allbasins: %d   bmap_time: %d\n", minute, (int)allbasins.size(), (int)bmap_time.size());
+	}
+	bstate nbs = bs;
+	nbs.minute = minute;
+	for (int i = 1; i < bs.xpts - 1; i++)
+	{
+		for (int j = 1; j < bs.ypts - 1; j++)
 		{
 			nbs.b[i][j] = step(bs, i, j);
 		}
 	}
+	allbasins.push_back(nbs);
+	bmap_t ps;
+	clear(ps);
+	bmap_time.push_back(ps);
 	bs = nbs;
+	//printf("Minute: %d   allbasins: %d   bmap_time: %d\n", minute, (int)allbasins.size(), (int)bmap_time.size());
 }
 
-bool update(bstate &bs)
+bool update(bstate &bs, int minute)
 {
-	blizzard_update(bs);
+	blizzard_update(bs, minute);
 	return true;
 }
 
@@ -140,22 +188,6 @@ void initminute()
 
 
 
-void outgrid(bstate &b, bool EWNS = false)
-{
-
-	printf("Minute: %d  [%d,%d]\n", b.minute, xpts, ypts);
-	for (int y = 0; y < ypts; y++)
-	{
-		for (int x = 0; x < xpts; x++)
-		{
-			if (EWNS) printf("%c", dirChar(b.b[x][y]));
-			else printf("%c", exChar(b.b[x][y]));
-		}
-		printf("\n");
-	}
-	printf("\n");
-}
-
 
 #define MAXLINE 1000
 ///////////////////////////////////////////////////////////////////
@@ -166,6 +198,9 @@ void outgrid(bstate &b, bool EWNS = false)
 
 void clear(bstate &b)
 {
+	b.minute = 0;
+	b.xpts = 0;
+	b.ypts = 0;
 	for (int i = 0; i < MAXX; i++)
 	    for (int j = 0; j < MAXY; j++)
 	    {
@@ -178,93 +213,143 @@ void clear(bstate &b)
 char letter = 'A';
 
 
-bool parseline(FILE *f)
+bool parseline(FILE *f, bstate &basin)
 {
 	char s[MAXLINE];
 
 	fgets(s, MAXLINE, f);
 	if (feof(f)) return false;
 	int slen = strlen(s);
-	if (xpts < slen-1) { xpts = slen-1; printf("xpts = %d\n", xpts); }
+	if (basin.xpts < slen-1) { basin.xpts = slen-1; 
+		//printf("xpts = %d\n", xpts); 
+	}
 	for (int i = 0; i < slen; i++)
 	{
 		switch(s[i])
 		{
-			case '#': basin.b[i][ypts] = WALL;  break;
-			case '>': basin.b[i][ypts] = RIGHT; break;
-			case '<': basin.b[i][ypts] = LEFT;  break;
-			case '^': basin.b[i][ypts] = UP;    break;
-			case 'v': basin.b[i][ypts] = DOWN;  break;
-			case '.': basin.b[i][ypts] = 0;     break;
+			case '#': basin.b[i][basin.ypts] = WALL;  break;
+			case '>': basin.b[i][basin.ypts] = RIGHT; break;
+			case '<': basin.b[i][basin.ypts] = LEFT;  break;
+			case '^': basin.b[i][basin.ypts] = UP;    break;
+			case 'v': basin.b[i][basin.ypts] = DOWN;  break;
+			case '.': basin.b[i][basin.ypts] = 0;     break;
 			case '\n': continue;
 		}
 
 	}
-	ypts++;
+	basin.ypts++;
 	return true;
 }
-	
-void init(const char *fn)
+
+void init(const char *fn, bstate &basin)
 {
 	clear(basin);
-	xpts = 0; 
-	ypts = 0;
+
+	initminute();
+	//path_solution = 999999999;
 	FILE *f = fopen(fn, "r");
-	while (parseline(f));
+	while (parseline(f, basin));
 	fclose(f);
+	allbasins.clear();
+	allbasins.push_back(basin);
+	bmap_t ps;
+	clear(ps);
+	bmap_time.clear();
+	bmap_time.push_back(ps);
+	
 }
 
-bool procede(bstate &bs, int x, int y)
+bool procede(bstate &bs, int x, int y, const char *s)
 {
-	printf("Proceding to %d,%d ", x, y);
+	if (x == 1 && y == 0) return true;
+	if (x == bs.xpts - 2 && y == bs.ypts - 1) return true;
+//	{
+//		if (path_solution > bs.minute)
+//		{
+//			path_solution = bs.minute;
+//		}
+//		printf("SOLUTION::  Minute: %d -- at %d,%d\n", bs.minute, x, y);
+//		fflush(stdout);
+//		return true;
+//	}
+
+	if (debug)  printf("[%d] Proceding %s to %d,%d ", bs.minute, s, x, y);
 	const char *freason;
 	bool rv = false;
 	if (x < 1) {rv = false; freason = "x < 1";}
-	else if (y < 1) {rv = false; freason = "y < 1";}
-	else if (x > xpts - 2) {rv = false; freason = "x > xpts-2";}
-	else if (y > ypts - 2) {rv = false; freason = "y > ypts-2";}
+	else if ( (y < 1) ) {rv = false; freason = "y < 1";}
+	else if (x > bs.xpts - 2) {rv = false; freason = "x > xpts-2";}
+	else if (y > bs.ypts - 2) {rv = false; freason = "y > ypts-2";}
 	else if (bs.b[x][y] == STAY) {
 		rv = true;
-		if (minutes[x][y] == -1) minutes[x][y] = bs.minute;
-		if (minutes[x][y] > bs.minute)
-		{
-			minutes[x][y] = bs.minute;
-		}
 
 	}
 	else
 		freason = "NO STAY";
-		
-	if (!rv) printf("FAIL - %s\n", freason);
-	else printf("SUCCESS\n");
+	if (debug)  {	
+		if (!rv) printf("FAIL - %s\n", freason);
+		else printf("SUCCESS\n");
+	}
 	return rv;
 }
 
-void traverse(bstate bs, int x, int y)
+void traverse(bstate &bs, int minute, int x, int y, const char *s)
 {
-	printf("[%d] Traversing from %d,%d\n", bs.minute, x, y);
+	//minute++;
+	//outgrid(bs, x, y);
+	if (minute >= path_solution) return;
+	update(bs, minute);
+	if (bmap_time[minute].check[x][y]) {
+		//printf("%d,%d at minute %d - been here before\n", x,y,minute);
+		return;	// been here before
+	}
+	bmap_time[minute].check[x][y] = true;
+
+	if (x == bs.xpts - 2 && y == bs.ypts - 1)
+	{
+		if (path_solution > minute)
+		{
+			path_solution = minute;
+			printf("SOLUTION::  Minute: %d -- at %d,%d\n", minute, x, y);
+			fflush(stdout);
+		}
+		return;
+	}
+	//if (minutes[x][y] > 0 && bs.minute > minutes[x][y]) return;
+	if (debug) printf("[%d] Traversing %s from %d,%d\n", bs.minute, s, x, y);
 	//if (minutes[x][y] != -1 && bs.minute > minutes[x][y]) return;
-	update(bs);
-	if (procede(bs, x+1, y)) traverse(bs, x+1, y); // move RIGHT
-	if (procede(bs, x-1, y)) traverse(bs, x-1, y); // move LEFT
-	if (procede(bs, x, y+1)) traverse(bs, x, y+1); // move DOWN
-	if (procede(bs, x, y-1)) traverse(bs, x, y-1); // move UP
-	traverse(bs, x, y);	// STAY
+	//update(bs);
+	if (procede(bs, x+1, y, "RIGHT")) {traverse(bs, minute+1, x+1, y, "RIGHT"); } // move RIGHT
+	if (procede(bs, x, y+1, "DOWN")) { traverse(bs, minute+1, x, y+1, "DOWN"); } // move DOWN
+	if (procede(bs, x-1, y, "LEFT")) traverse(bs, minute+1, x-1, y, "LEFT"); // move LEFT
+	//if ((x == 1 && y == 1) ) traverse(bs, minute, 1, 0, "UP"); // move UP
+	if (procede(bs, x, y-1, "UP")) traverse(bs, minute+1, x, y-1, "UP"); // move UP
+	if (procede(bs, x, y, "STAY")) traverse(bs, minute+1, x, y, "STAY");	// STAY
+	
 }
 
 void solvept1(const char *v, int solution)
 {
-	init(v);
+	bstate basin;
+	init(v, basin);
 
 	printf("Input file: %s\n", v);
+	fflush(stdout);
 
 	int	num_spaces = 0;
-	update(basin);
-	if (procede(basin, 1, 1))
-		traverse(basin, 1, 1);
-	else
-		printf("ERROR initialization\n");
-	num_spaces = minutes[xpts-1][ypts-2];
+	//update(basin);
+	//int save_solution = path_solution;
+	//init(v, basin);
+	//update(basin);
+	//path_solution = save_solution;
+	//printf("Trying STAY first\n");
+	//traverse(basin, 0, 1, 0, "STAY");
+	//printf("Trying DOWN first\n");
+	//traverse(basin, 0, 1, 1, "DOWN");
+	traverse(basin, 0, 1, 0, "DOWN");
+	num_spaces = path_solution;
+	update(basin, path_solution);
+	outgrid(basin, basin.xpts-2, basin.ypts-1);
 	printf("Number of minutes to traverse: %d\n", num_spaces);
 	if (solution > 0)
 	{
@@ -273,13 +358,15 @@ void solvept1(const char *v, int solution)
 		else
 			printf("Successfully found minimal traverse time!!\n");
 	}
+	printf("\n");
 
 }
 
 
 void solvept2(const char *v, int solution)
 {
-	init(v);
+	bstate basin;
+	init(v, basin);
 
 	printf("Input file: %s\n", v);
 	outgrid(basin);
@@ -302,8 +389,12 @@ void solvept2(const char *v, int solution)
 int main(int argc, char **argv)
 {
 	//solvept1("ex2.txt", 18);
+	path_solution = 50;
 	solvept1("ex.txt", 18);
-	//solvept1("input.txt", 1000);
+	//path_solution = 3000;
+	path_solution = 500;
+
+	solvept1("input.txt", 1000);  // 339 is too hight, 344 is too high, we are currently getting 345
 	//solvept2("ex.txt", 20);
 	//solvept2("input.txt", 895);
 	return 1;
