@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <cstring>
 #include <string>
+#include <queue>
 
 using namespace std;
 #define MAXX 155
@@ -23,10 +24,37 @@ void clear(bmap_t &b)
 			b.check[i][j] = false;
 }
 
+void clearfull(vector<bmap_t> &bm)
+{
+	for (size_t i = 0; i < bm.size(); i++)
+		clear(bm[i]);
+}
+							
+int count(bmap_t &b)
+{
+	int cnt = 0;
+	for (int i = 0; i < MAXX; i++)
+	    for (int j = 0; j < MAXY; j++)
+			if (b.check[i][j])cnt++;
+	return cnt;
+}
+struct pos_t {
+	int	x;	// x position
+	int y;	// y position
+	int t;	// time in minutes
+	pos_t(int  _x, int  _y, int  _t) : x(_x), y(_y), t(_t){};
+	pos_t incx() { return pos_t (x+1,y,t+1); };
+	pos_t decx() { return pos_t (x-1,y,t+1); };
+	pos_t incy() { return pos_t (x,y+1,t+1); };
+	pos_t decy() { return pos_t (x,y-1,t+1); };
+	pos_t stay() { return pos_t (x,y,t+1); };
+	bool operator == (pos_t &rhs) { return x == rhs.x && y == rhs.y; };
+	void out() { printf("(%d,%d) @ %d minute\n", x, y, t);  };
+};
+
 typedef enum {STAY=0, UP=1, RIGHT=2, DOWN=4, LEFT=8, WALL=64} dir_e;
 
 
-int num_movements = 0;
 int path_solution = 999999999;
 bool debug = false;
 
@@ -86,11 +114,6 @@ typedef struct {
 } bstate;
 
 vector<bstate> allbasins;
-int		minutes[MAXX][MAXY];		// number of minutes to get to x,y		
-
-
-//int xpts = 0;
-//int ypts = 0;
 
 
 void outgrid(bstate &b, int Ex = -5, int Ey =-5, bool EWNS = false)
@@ -175,19 +198,6 @@ bool update(bstate &bs, int minute)
 }
 
 
-void initminute()
-{
-	for (int i = 0; i < MAXX; i++)
-	{
-	    for (int j = 0; j < MAXY; j++)
-	    {
-	        minutes[i][j] = -1;
-	    }
-	 }
-}
-
-
-
 
 #define MAXLINE 1000
 ///////////////////////////////////////////////////////////////////
@@ -208,11 +218,6 @@ void clear(bstate &b)
 	    }
 }
 			
-
-
-char letter = 'A';
-
-
 bool parseline(FILE *f, bstate &basin)
 {
 	char s[MAXLINE];
@@ -241,11 +246,12 @@ bool parseline(FILE *f, bstate &basin)
 	return true;
 }
 
+pos_t g_goal(0,0,0);
+
 void init(const char *fn, bstate &basin)
 {
 	clear(basin);
 
-	initminute();
 	//path_solution = 999999999;
 	FILE *f = fopen(fn, "r");
 	while (parseline(f, basin));
@@ -256,31 +262,23 @@ void init(const char *fn, bstate &basin)
 	clear(ps);
 	bmap_time.clear();
 	bmap_time.push_back(ps);
-	
+	pos_t	gg = {basin.xpts - 2, basin.ypts - 1, 0};
+	g_goal = gg;
 }
 
-bool procede(bstate &bs, int x, int y, const char *s)
+bool procede(bstate &bs, pos_t &p, const char *s)
 {
-	if (x == 1 && y == 0) return true;
-	if (x == bs.xpts - 2 && y == bs.ypts - 1) return true;
-//	{
-//		if (path_solution > bs.minute)
-//		{
-//			path_solution = bs.minute;
-//		}
-//		printf("SOLUTION::  Minute: %d -- at %d,%d\n", bs.minute, x, y);
-//		fflush(stdout);
-//		return true;
-//	}
+	if (p.x == 1 && p.y == 0) return true;
+	if (p.x == bs.xpts - 2 && p.y == bs.ypts - 1) return true;
 
-	if (debug)  printf("[%d] Proceding %s to %d,%d ", bs.minute, s, x, y);
+	if (debug)  printf("[%d] Proceding %s to %d,%d ", bs.minute, s, p.x, p.y);
 	const char *freason;
 	bool rv = false;
-	if (x < 1) {rv = false; freason = "x < 1";}
-	else if ( (y < 1) ) {rv = false; freason = "y < 1";}
-	else if (x > bs.xpts - 2) {rv = false; freason = "x > xpts-2";}
-	else if (y > bs.ypts - 2) {rv = false; freason = "y > ypts-2";}
-	else if (bs.b[x][y] == STAY) {
+	if (p.x < 1) {rv = false; freason = "x < 1";}
+	else if ( (p.y < 1) ) {rv = false; freason = "y < 1";}
+	else if (p.x > bs.xpts - 2) {rv = false; freason = "x > xpts-2";}
+	else if (p.y > bs.ypts - 2) {rv = false; freason = "y > ypts-2";}
+	else if (bs.b[p.x][p.y] == STAY) {
 		rv = true;
 
 	}
@@ -293,40 +291,76 @@ bool procede(bstate &bs, int x, int y, const char *s)
 	return rv;
 }
 
-void traverse(bstate &bs, int minute, int x, int y, const char *s)
-{
-	//minute++;
-	//outgrid(bs, x, y);
-	if (minute >= path_solution) return;
-	update(bs, minute);
-	if (bmap_time[minute].check[x][y]) {
-		//printf("%d,%d at minute %d - been here before\n", x,y,minute);
-		return;	// been here before
-	}
-	bmap_time[minute].check[x][y] = true;
 
-	if (x == bs.xpts - 2 && y == bs.ypts - 1)
-	{
-		if (path_solution > minute)
-		{
-			path_solution = minute;
-			printf("SOLUTION::  Minute: %d -- at %d,%d\n", minute, x, y);
-			fflush(stdout);
-		}
-		return;
-	}
-	//if (minutes[x][y] > 0 && bs.minute > minutes[x][y]) return;
-	if (debug) printf("[%d] Traversing %s from %d,%d\n", bs.minute, s, x, y);
-	//if (minutes[x][y] != -1 && bs.minute > minutes[x][y]) return;
-	//update(bs);
-	if (procede(bs, x+1, y, "RIGHT")) {traverse(bs, minute+1, x+1, y, "RIGHT"); } // move RIGHT
-	if (procede(bs, x, y+1, "DOWN")) { traverse(bs, minute+1, x, y+1, "DOWN"); } // move DOWN
-	if (procede(bs, x-1, y, "LEFT")) traverse(bs, minute+1, x-1, y, "LEFT"); // move LEFT
-	//if ((x == 1 && y == 1) ) traverse(bs, minute, 1, 0, "UP"); // move UP
-	if (procede(bs, x, y-1, "UP")) traverse(bs, minute+1, x, y-1, "UP"); // move UP
-	if (procede(bs, x, y, "STAY")) traverse(bs, minute+1, x, y, "STAY");	// STAY
-	
+bool explored(pos_t p)
+{
+	return bmap_time[p.t].check[p.x][p.y];
 }
+
+
+//
+// https://en.wikipedia.org/wiki/Breadth-first_search
+//    tried depth first search, but in drilled down too fast and did not
+//    seem to come back to find better solutions
+//  procedure BFS(G, root) is
+//   2      let Q be a queue
+//   3      label root as explored
+//   4      Q.enqueue(root)
+//   5      while Q is not empty do
+//   6          v := Q.dequeue()
+//   7          if v is the goal then
+//   8              return v
+//   9          for all edges from v to w in G.adjacentEdges(v) do
+//  10              if w is not labeled as explored then
+//  11                  label w as explored
+//  12                  w.parent := v
+//  13                  Q.enqueue(w)
+pos_t bfsearch(bstate &bs, pos_t p, pos_t goal)
+{
+	queue<pos_t> q;		// (2) q will be our q for searching
+	// max_time too large x*y - try 4 * max(x,y)
+	const int max_time = 4 * max(bs.xpts, bs.ypts) + p.t;
+	update(bs, p.t);	//     updates state field and zeros bmap_time for this time
+// (3) 
+// (4) add root to q 
+	q.push(p); 
+	while (!q.empty())	// (5) while Q is not empty do
+	{
+		pos_t	v = q.front();		//   (6)  v := Q.dequeue()
+		q.pop();
+		// Check if pos_t has been 'explored', if so, continue
+		if (explored(v)) {
+			continue;
+		}
+		bmap_time[v.t].check[v.x][v.y] = true;
+		if (v == goal) return  v;	//   (7) if v is the goal then return v (8)
+		// NEED TO LIMIT TIME - say bs.xpts * bs.ypts maximum
+		if (v.t > max_time) continue;
+//
+//   9          for all edges from v to w in G.adjacentEdges(v) do
+//
+		// it will add to the Q and mark explored
+//  10              if w is not labeled as explored then
+//  11                  label w as explored
+//  12                  w.parent := v	// NOT NEEDED
+//  13                  Q.enqueue(w)
+		update(bs, v.t + 1);
+		pos_t pyp1 = v.incy();
+		pos_t pym1 = v.decy();
+		pos_t pxp1 = v.incx();
+		pos_t pxm1 = v.decx();
+		pos_t pstay = v.stay();
+
+		if (procede(bs, pyp1, "DOWN"))  q.push(pyp1);  	// move DOWN
+		if (procede(bs, pxp1, "RIGHT")) q.push(pxp1); 	// move RIGHT
+		if (procede(bs, pym1, "UP"))    q.push(pym1);	// move UP
+		if (procede(bs, pxm1, "LEFT"))  q.push(pxm1);	// move LEFT
+		if (procede(bs, pstay, "STAY")) q.push(pstay); 	// STAY
+	}
+	return {-1,-1,-1};
+}
+
+
 
 void solvept1(const char *v, int solution)
 {
@@ -335,25 +369,13 @@ void solvept1(const char *v, int solution)
 
 	printf("Input file: %s\n", v);
 	fflush(stdout);
-
-	int	num_spaces = 0;
-	//update(basin);
-	//int save_solution = path_solution;
-	//init(v, basin);
-	//update(basin);
-	//path_solution = save_solution;
-	//printf("Trying STAY first\n");
-	//traverse(basin, 0, 1, 0, "STAY");
-	//printf("Trying DOWN first\n");
-	//traverse(basin, 0, 1, 1, "DOWN");
-	traverse(basin, 0, 1, 0, "DOWN");
-	num_spaces = path_solution;
-	update(basin, path_solution);
-	outgrid(basin, basin.xpts-2, basin.ypts-1);
-	printf("Number of minutes to traverse: %d\n", num_spaces);
+	
+	pos_t bfs_solution = bfsearch(basin, pos_t(1,0,0), g_goal);
+	printf("x,y,t::  %d,%d,%d\n", bfs_solution.x, bfs_solution.y, bfs_solution.t);
+	printf("Number of minutes to traverse: %d\n", bfs_solution.t);
 	if (solution > 0)
 	{
-		if (num_spaces != solution)
+		if (bfs_solution.t != solution)
 			printf("ERROR - traverse time does not agree with truth: %d!\n", solution);
 		else
 			printf("Successfully found minimal traverse time!!\n");
@@ -369,12 +391,17 @@ void solvept2(const char *v, int solution)
 	init(v, basin);
 
 	printf("Input file: %s\n", v);
-	outgrid(basin);
-	int num_minutes = 10;
-	while (num_movements)
-	{
-		//outgrid(basin);
-	}
+	fflush(stdout);
+	pos_t bfs_solution = bfsearch(basin, pos_t(1,0,0), g_goal);
+	bfs_solution.out();
+	// when bfsearch returns, the state of the bf is good, just need to zero the 
+	// bmap_time, then call bfsearch again, with the 
+	clearfull(bmap_time);
+	bfs_solution = bfsearch(basin, bfs_solution, pos_t(1,0,0));
+	clearfull(bmap_time);
+	bfs_solution = bfsearch(basin, pos_t(1,0,bfs_solution.t), g_goal);
+	int num_minutes = bfs_solution.t;
+
 	printf("Number of minutes to traverse: %d\n", num_minutes);
 	if (solution > 0)
 	{
@@ -388,15 +415,12 @@ void solvept2(const char *v, int solution)
 
 int main(int argc, char **argv)
 {
-	//solvept1("ex2.txt", 18);
-	path_solution = 50;
 	solvept1("ex.txt", 18);
-	//path_solution = 3000;
-	path_solution = 500;
+	solvept1("input.txt", 326);
+	
 
-	solvept1("input.txt", 1000);  // 339 is too hight, 344 is too high, we are currently getting 345
-	//solvept2("ex.txt", 20);
-	//solvept2("input.txt", 895);
+	solvept2("ex.txt", 54);
+	solvept2("input.txt", 976);
 	return 1;
 }
 
