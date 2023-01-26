@@ -15,19 +15,13 @@ using namespace std;
 
 int MinutesToRun = MAX_MINUTE;
 
-typedef enum {
-	vs_move,	// if in this state, will move (state -> vs_flow)
-	vs_flow 	// if in this state, can turn on flow if flow > 0;
-} valve_state;
 
 typedef struct path_s {
 	int 		minute;
 	string 		openvalves;
 	string 		path;
 	int			atvalve1;
-	int			prevvalve1;
 	int			atvalve2;
-	int			prevvalve2;
 	int			pressure;
 	int			new_pressure;
 	int			total;
@@ -80,7 +74,6 @@ typedef struct valve_s {
 	//int times_visited;
 	vector<string> tunnels;
 	vector<int>  tunix;
-	valve_state state;
 } valve;
 
 vector<valve> volcano;
@@ -268,16 +261,12 @@ void		next_move(vector<valve> &v, path_state ps)
 	path_state pnn = ps;
 	for (int i = 0; i < (int)v[ix1].tunnels.size(); i++)
 	{
-		//if (v[ix1].tunix[i] == pnn.prevvalve1) continue;
 		pnn.atvalve1 = v[ix1].tunix[i];
-		pnn.prevvalve1 = ix1;
 		for (int j = 0; j < (int)v[ix2].tunnels.size(); j++)
 		{
-			//if (v[ix2].tunix[j] == pnn.prevvalve2) continue;
 			path_state p = pnn;
 			
 			p.atvalve2 = v[ix2].tunix[j];
-			p.prevvalve2 = ix2;
 			next_move(v, p);
 		}
 	}
@@ -296,8 +285,6 @@ void		next_move(vector<valve> &v, path_state ps)
 		//UPDATE(pyy);
 		turn_on_valve(v, pyy, ix1);
 		turn_on_valve(v, pyy, ix2); 
-		pyy.prevvalve1 = ix1;
-		pyy.prevvalve2 = ix2;
 		next_move(v, pyy);
 	}		
 	//
@@ -306,14 +293,11 @@ void		next_move(vector<valve> &v, path_state ps)
 	{
 		//UPDATE(pyn);
 		turn_on_valve(v, pyn, ix1); 
-		pyn.prevvalve1 = ix1;
 		for (int i = 0; i < (int)v[ix2].tunnels.size(); i++)
 		{
-			//if (v[ix2].tunix[i] == pyn.prevvalve2) continue;
 			path_state p = pyn;
 				
 			p.atvalve2 = v[ix2].tunix[i];
-			p.prevvalve2 = ix2;
 			next_move(v, p);
 		}
 	}
@@ -323,14 +307,11 @@ void		next_move(vector<valve> &v, path_state ps)
 	{
 		//UPDATE(pny);
 		turn_on_valve(v, pny, ix2);
-		pny.prevvalve2 = ix1;
 		
 		for (int i = 0; i < (int)v[ix1].tunnels.size(); i++)
 		{
 			path_state p = pny;
-			//if (v[ix1].tunix[i] == p.prevvalve1) continue;
 			p.atvalve1 = v[ix1].tunix[i];
-			p.prevvalve1 = ix1;
 			next_move(v, p);
 		}
 	
@@ -382,7 +363,6 @@ void init(const char *fn)
 			if (*inp == ',') inp += 2;
 		}
 		v.index = index++;
-		v.state = vs_flow;
 		volcano.push_back(v);
 	}
 	for (size_t i = 0; i < volcano.size(); i++)
@@ -437,9 +417,7 @@ void solvept1(const char *fn, int answer)
 	for (size_t m = 0; m < volcano[aa].tunix.size(); m++)
 	{
 		path_state nps = ps;
-		nps.prevvalve1 = aa;
 		nps.atvalve1 = v[aa].tunix[m];
-		nps.prevvalve2 = -1;
 		nps.atvalve2 = -1;
 		next_move(v, nps);
 	}
@@ -469,9 +447,7 @@ void solvept2(const char *fn, int answer)
 		for (size_t m = k+1; m < volcano[aa].tunix.size(); m++)
 		{
 			path_state nps;
-			nps.prevvalve1 = aa;
 			nps.atvalve1 = volcano[aa].tunix[k];
-			nps.prevvalve2 = aa;
 			nps.atvalve2 = volcano[aa].tunix[m];
 			next_move(volcano, nps);
 		}
@@ -498,134 +474,154 @@ int main5()
 }
 
 
-// CPP code for printing shortest path between
-// two vertices of unweighted graph
-#include <bits/stdc++.h>
-using namespace std;
 
-// utility function to form edge between two vertices
-// source and dest
-void add_edge(vector<int> adj[], int src, int dest)
+bool explored(path_state &p)
 {
-	adj[src].push_back(dest);
-	adj[dest].push_back(src);
+	return bmap_time[p.t].check[p.x][p.y];
 }
 
-// a modified version of BFS that stores predecessor
-// of each vertex in array p
-// and its distance from source in array d
-bool BFS(vector<int> adj[], int src, int dest, int v,
-		int pred[], int dist[])
+//
+// https://en.wikipedia.org/wiki/Breadth-first_search
+//    tried depth first search, but in drilled down too fast and did not
+//    seem to come back to find better solutions
+//  procedure BFS(G, root) is
+//   2      let Q be a queue
+//   3      label root as explored
+//   4      Q.enqueue(root)
+//   5      while Q is not empty do
+//   6          v := Q.dequeue()
+//   7          if v is the goal then
+//   8              return v
+//   9          for all edges from v to w in G.adjacentEdges(v) do
+//  10              if w is not labeled as explored then
+//  11                  label w as explored
+//  12                  w.parent := v
+//  13                  Q.enqueue(w)
+int bfsearch(vector<valve> &g, int num_bots, int start_index, int max_time)
 {
-	// a queue to maintain queue of vertices whose
-	// adjacency list is to be scanned as per normal
-	// DFS algorithm
-	list<int> queue;
+	queue<path_state> q;		// (2) q will be our q for searching
+// (3) create 1 or two roots (num_bots)
+	path_state ps;
+	ps.minute = 1;
+	ps.pressure = 0;
+	ps.total = 0;
+	ps.path = volcano[0].nm;
+	ps.atvalve1 = start_index;
+	if (num_bots > 1)
+		ps.atvalve2 = start_index;
+	else
+		ps.atvalve2 = -1;
+	ps.valves_left_to_open = numGTzero(volcano);
 
-	// boolean array visited[] which stores the
-	// information whether ith vertex is reached
-	// at least once in the Breadth first search
-	bool visited[v];
-
-	// initially all vertices are unvisited
-	// so v[i] for all i is false
-	// and as no path is yet constructed
-	// dist[i] for all i set to infinity
-	for (int i = 0; i < v; i++) {
-		visited[i] = false;
-		dist[i] = INT_MAX;
-		pred[i] = -1;
-	}
-
-	// now source is first to be visited and
-	// distance from source to itself should be 0
-	visited[src] = true;
-	dist[src] = 0;
-	queue.push_back(src);
-
-	// standard BFS algorithm
-	while (!queue.empty()) {
-		int u = queue.front();
-		queue.pop_front();
-		for (int i = 0; i < (int) adj[u].size(); i++) {
-			if (visited[adj[u][i]] == false) {
-				visited[adj[u][i]] = true;
-				dist[adj[u][i]] = dist[u] + 1;
-				pred[adj[u][i]] = u;
-				queue.push_back(adj[u][i]);
-
-				// We stop BFS when we find
-				// destination.
-				if (adj[u][i] == dest)
-					return true;
-			}
+// (4) add root to q
+	
+	q.push(ps); 
+	while (!q.empty())	// (5) while Q is not empty do
+	{
+		path_state	v = q.front();		//   (6)  v := Q.dequeue()
+		q.pop();
+		// Check if pos_t has been 'explored', if so, continue
+		if (c(v)) {
+			continue;
 		}
-	}
+		bmap_time[v.t].check[v.x][v.y] = true;
+		if (v == goal) return  v;	//   (7) if v is the goal then return v (8)
+		// NEED TO LIMIT TIME - say bs.xpts * bs.ypts maximum
+		if (v.t > max_time) continue;
+//
+//   9          for all edges from v to w in G.adjacentEdges(v) do
+//
+		// it will add to the Q and mark explored
+//  10              if w is not labeled as explored then
+//  11                  label w as explored
+//  12                  w.parent := v	// NOT NEEDED
+//  13                  Q.enqueue(w)
+		update(bs, v.t + 1);
+		pos_t pyp1 = v.incy();
+		pos_t pym1 = v.decy();
+		pos_t pxp1 = v.incx();
+		pos_t pxm1 = v.decx();
+		pos_t pstay = v.stay();
 
-	return false;
+		if (procede(bs, pyp1, "DOWN"))  q.push(pyp1);  	// move DOWN
+		if (procede(bs, pxp1, "RIGHT")) q.push(pxp1); 	// move RIGHT
+		if (procede(bs, pym1, "UP"))    q.push(pym1);	// move UP
+		if (procede(bs, pxm1, "LEFT"))  q.push(pxm1);	// move LEFT
+		if (procede(bs, pstay, "STAY")) q.push(pstay); 	// STAY
+	}
+	return {-1,-1,-1};
 }
 
-// utility function to print the shortest distance
-// between source vertex and destination vertex
-void printShortestDistance(vector<int> adj[], int s,
-						int dest, int v)
+
+
+void solvept1(const char *fn, int answer)
 {
-	// predecessor[i] array stores predecessor of
-	// i and distance array stores distance of i
-	// from s
-	int pred[v], dist[v];
-
-	if (BFS(adj, s, dest, v, pred, dist) == false) {
-		cout << "Given source and destination"
-			<< " are not connected";
-		return;
+	init(fn);
+	output(volcano);
+	//vector<valve> nv = volcano;
+	//output(nv);
+	path_state ps;
+	ps.minute = 0;
+	ps.pressure = 0;
+	ps.total = 0;
+	ps.path = volcano[0].nm;
+	outps(ps);
+	for (int i = 0; i <= MAX_MINUTE; i++) 
+	{
+		gPath[i] = ps;
+		MaxPressure[i] = 0;
 	}
-
-	// vector path stores the shortest path
-	vector<int> path;
-	int crawl = dest;
-	path.push_back(crawl);
-	while (pred[crawl] != -1) {
-		path.push_back(pred[crawl]);
-		crawl = pred[crawl];
-	}
-
-	// distance from source is in distance array
-	cout << "Shortest path length is : "
-		<< dist[dest];
-
-	// printing path from source to destination
-	cout << "\nPath is::\n";
-	for (int i = path.size() - 1; i >= 0; i--)
-		cout << path[i] << " ";
+	move_to_tunnel(volcano, ps, nm_index(volcano, "AA"));
+	printf("\n\ngPath\n");
+	outps(gPath[MAX_MINUTE]);
+	printf("Flow: %d\n", MaxPressure[MAX_MINUTE]);
+	if (MaxPressure[MAX_MINUTE] == answer)
+		printf("Answer is correct!!!\n");
+	else
+		printf("Answer is not correct - should be %d\n", answer);
 }
 
-// Driver program to test above functions
+void solvept2(const char *fn, int answer)
+{
+	init(fn);
+	output(volcano);
+	//vector<valve> nv = volcano;
+	//output(nv);
+	path_state ps;
+	ps.minute = 1;
+	ps.pressure = 0;
+	ps.total = 0;
+	ps.path = volcano[0].nm;
+	ps.valves_left_to_open = numGTzero(volcano);
+	int aa = nm_index(volcano, "AA");
+	path_state el = ps;
+	outps(ps);
+    MinutesToRun = 26;
+	for (size_t k = 0; k < volcano[aa].tunix.size(); k++)
+	{
+		for (int i = 0; i <= MAX_MINUTE; i++) 
+		{
+			gPath[i] = ps;
+			MaxPressure[i] = 0;
+		}
+		path_state nps = ps;
+		move_to_tunnel(volcano, nps, volcano[aa].tunix[k]);
+		printf("\n\ngPath\n");
+		outps(gPath[MinutesToRun]);
+		printf("Flow: %d\n", MaxPressure[MinutesToRun]);
+	}
+	if (MaxPressure[MAX_MINUTE] == answer)
+		printf("Answer is correct!!!\n");
+	else
+		printf("Answer is not correct - should be %d\n", answer);
+}
+
 int main()
 {
-	// no. of vertices
-	int v = 8;
 
-	// array of vectors is used to store the graph
-	// in the form of an adjacency list
-	vector<int> adj[v];
-
-	// Creating graph given in the above diagram.
-	// add_edge function takes adjacency list, source
-	// and destination vertex as argument and forms
-	// an edge between them.
-	add_edge(adj, 0, 1);
-	add_edge(adj, 0, 3);
-	add_edge(adj, 1, 2);
-	add_edge(adj, 3, 4);
-	add_edge(adj, 3, 7);
-	add_edge(adj, 4, 5);
-	add_edge(adj, 4, 6);
-	add_edge(adj, 4, 7);
-	add_edge(adj, 5, 6);
-	add_edge(adj, 6, 7);
-	int source = 0, dest = 7;
-	printShortestDistance(adj, source, dest, v);
+	solvept1("ex.txt", 1651);
+	solvept1("input.txt", 1906);  // 1833 is too low!!  2544 is too high!!
+	return 0;
+	//solvept2("ex.txt", 1651);
 	return 0;
 }
-
