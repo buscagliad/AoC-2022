@@ -23,7 +23,6 @@ int MinutesToRun = MAX_MINUTE;
 typedef struct path_s {
 	int 		minute;
 	string 		openvalves;
-	string 		path;
 	int			atvalve1;
 	int			atvalve2;
 	int			pressure;
@@ -52,6 +51,164 @@ vector<valve> volcano;
 
 std::set<uint64_t> spaths;	// search paths
 
+typedef struct {
+	int 	flow;
+	int		minutes;
+} min_t;	// this structure will create a graph of ONLY flow positive valves, and the 
+			// minimum time to get to this valve from any other of the valves
+
+void out(min_t &t)
+{
+	printf(" %d   Min: %d\n", t.flow, t.minutes);
+}
+#define GRAPH_SIZE 17
+
+typedef struct {
+	int    size;
+	string nm[GRAPH_SIZE];
+	int    flow[GRAPH_SIZE];
+	int    minutes[GRAPH_SIZE][GRAPH_SIZE];
+} graph_t;	// this compressed graph will take vector<valve> --> vector<graph_t>
+
+
+void dump(graph_t &g)
+{
+	printf("    ");
+	for (int i = 0; i < g.size; i++)
+	{
+		printf("  %2.2s", g.nm[i].c_str());
+	}
+	printf("\n");
+	for (int i = 0; i < g.size; i++)
+	{
+		printf("  %2.2s", g.nm[i].c_str());
+		for (int j = 0; j <  g.size; j++)
+		{
+			int	f2 = g.minutes[i][j];
+			if (f2 >= 0) printf("%4d", f2);
+			else printf("    ");
+		}
+		printf("\n");
+	}
+}
+
+void zerog(graph_t &g)
+{
+	g.size = 0;
+	for (int i = 0; i < GRAPH_SIZE; i++)
+	{
+		g.nm[i] ="";
+		g.flow[i] = -1;
+		for (int j = 0; j < GRAPH_SIZE; j++)
+		{
+			g.minutes[i][j] = -1;
+		}
+	}
+}
+
+
+int	time2travel(vector<valve> &vv, graph_t &g, int from, int to)
+{
+	stack<min_t> st;
+	st.push({from, 0});
+	int	mintime = vv.size();
+	while (!st.empty())
+	{
+		min_t tt = st.top();
+		from = tt.index;
+		//printf("FROM: %d\n", from);
+		st.pop();
+		if (g[from][to].minutes > 0  &&
+		    g[from][to].minutes <= tt.minutes) continue;
+		if (tt.minutes >= mintime) continue;
+		if (tt.index == to)
+		{
+			if (g[from][to].minutes < 0 || tt.minutes < g[from][to].minutes)
+			{
+				g[from][to].minutes = tt.minutes;
+				continue;
+			}
+		}
+		tt.minutes++;
+		for (int i = 0; i < (int) vv[from].tunix.size(); i++)
+		{
+			tt.index = vv[from].tunix[i];
+			tt.nm = vv[tt.index].nm;
+			//out(tt);
+			st.push(tt);
+		}
+	}
+	return mintime;
+}
+
+bool compress(vector<valve> &vv, graph_t &cg)
+{
+	//
+	// fill in flow and 'AA'
+	//
+	int	gf = 0;
+	int gt = 0;
+	cg.size = 0;
+	for (int from = 0; from < (int) vv.size(); from++)
+	{
+		if (vv[from].nm != "AA"  &&  vv[from].flow == 0) continue;
+		g.nm[cg.size] = vv[from].nm;
+		g.flow[cg.size] = vv[from].flow;
+		cg.size++;
+	}
+	//
+	// go from each g.nm to each other g.nm within v
+	// to determine the shortest path
+	//
+	for (int from = 0; from < (int) g.size; from++)
+	{
+		for (int to = 0; to < (int) g.size; to++)
+		{
+			if (to == from) continue;
+			if (vv[to].flow == 0) continue;
+			min_t	m;
+			cg.nm = vv[to].nm;
+			g.minutes[gf][gt] = time2travel(vv, cg, from, to); //6; //
+			cg[from][to] = g;
+		}
+	}
+	dump(cg);
+	//
+	// reorder indexes based on names
+	//
+	for (int i = 0; i < (int) graph_size; i++)
+	{
+		// find the cg index of each tunnel name
+		for (int j = 0; j < (int) graph_size; j++)
+		{
+
+		}
+	}
+	return true;
+}
+
+#ifdef SSSSS
+
+typedef struct {
+	long 	flow;
+	int		minutes;
+} min_t;	// this structure will create a graph of ONLY flow positive valves, and the 
+			// minimum time to get to this valve from any other of the valves
+
+typedef struct {
+	string nm[GRAPH_SIZE];
+	int	  size;
+	min_t tunnels[GRAPH_SIZE][GRAPH_SIZE];
+} graph_t;	// this compressed graph will take vector<valve> --> vector<graph_t>
+#endif
+
+int nm_index(graph_t g, string nm)
+{
+	for (int i = 0; i <  g.size; i++)
+	    if (g.nm[i] == nm) return i;
+	if (debug) printf("nm_index::  |%s| not found\n", nm.c_str());
+	return -1;
+}
 
 
 bool zvalue(path_state &p, int v)
@@ -116,7 +273,6 @@ void outps(path_state &p)
 {
 	printf("\nMinute: %d\n", p.minute);
 	printf("Open Values: %s\n", p.openvalves.c_str());
-	printf("Path: %s\n", p.path.c_str());
 	printf("Minute pressure: %d\n", p.pressure);
 	printf("Total pressure: %d\n", p.total);
 }
@@ -163,13 +319,11 @@ bool turn_on_valve(vector<valve> &v, path_state &ps, int ix, bool debug = false)
 	//ps.path += " ^" + v[ix].nm;
 	ps.valves_left_to_open--;
 	//ps.pressure += v[ix].flow;	
-	ps.total += ps.pressure;
-	ps.pressure += v[ix].flow;
-	ps.minute++;
+	ps.new_pressure += v[ix].flow;
 	zvalue(ps, v[ix].flow);
 	
-	if (debug) printf("Path: %s  Turning on valve At %s flow: %ld  minute: %d  total: %d\n", 
-		ps.path.c_str(), v[ix].nm.c_str(), v[ix].flow, ps.minute, ps.total);
+	if (debug) printf("Open: %s  Turning on valve At %s flow: %ld  minute: %d  total: %d\n", 
+		ps.openvalves.c_str(), v[ix].nm.c_str(), v[ix].flow, ps.minute, ps.total);
     return true;
 }
 
@@ -228,6 +382,7 @@ void init(const char *fn)
 	}
 	fclose(f);
 	spaths.clear();
+	zerog();
 }
 
 void output(vector<valve> &v)
@@ -245,6 +400,9 @@ void output(vector<valve> &v)
 		printf("\n");
 	}
 }
+
+
+
 
 uint64_t hash_path(path_state &p)
 {
@@ -301,8 +459,8 @@ int dfsearch(vector<valve> &g, int num_bots, int start_index, int max_time)
 	path_state ps;
 	ps.minute = 0;
 	ps.pressure = 0;
+	ps.new_pressure = 0;
 	ps.total = 0;
-	ps.path = volcano[0].nm;
 	ps.atvalve1 = start_index;
 	setflows(g, ps);
 	
@@ -320,10 +478,6 @@ int dfsearch(vector<valve> &g, int num_bots, int start_index, int max_time)
 	{
 		path_state	v = q.top();		//   (6)  v := Q.dequeue()  (back() - depth first search
 		q.pop();
-		// Check if pos_t has been 'explored', if so, continue
-		if (explored(v)) {
-			continue;
-		}
 
 		//   (7) if v is the goal then return v (8)
 		// NEED TO LIMIT TIME - say bs.xpts * bs.ypts maximum
@@ -332,34 +486,66 @@ int dfsearch(vector<valve> &g, int num_bots, int start_index, int max_time)
 			if (v.total > max_total) {
 				max_total = v.total;
 				//printf("Minute: %d  Total: %d\n", v.minute, v.total);
-				//outps(v);
+				outps(v);
 				fflush(stdout);
 			}
+			continue;
+		}
+		// Check if pos_t has been 'explored', if so, continue
+		if (max_remaining(g, v) <= max_total) continue;
+		if (explored(v)) {
 			continue;
 		}
 		set_explored(v);
 //
 //   9          for all edges from v to w in G.adjacentEdges(v) do
 //
+
+
+		stack<path_state> lq;		// local queue to store ix1 and ix2 moves
 		int ix1 = v.atvalve1;
+		int ix2 = v.atvalve2;
+		path_state	p = v;		//   (6)  v := Q.dequeue()  (back() - depth first search
 		if ( (g[ix1].flow > 0) && v.openvalves.find(g[ix1].nm) == string::npos) {
-			path_state	p = v;		//   (6)  v := Q.dequeue()  (back() - depth first search
 			turn_on_valve(g, p, ix1);
-			p.path += " " + to_string(p.minute) + "-*" + g[p.atvalve1].nm;
-			q.push(p);
-			p.total += p.pressure;
 		}
+		lq.push(p);
 		for (int i = 0; i < (int) g[ix1].tunix.size(); i++)
 		{
-			path_state	p = v;		//   (6)  v := Q.dequeue()  (back() - depth first search
-			// if g[v.atvalve1]
+			p = v;		//   (6)  v := Q.dequeue()  (back() - depth first search
 			p.atvalve1 = g[ix1].tunix[i];
-	
-			p.minute++;
-			p.path += " " + to_string(p.minute) + "-" + g[p.atvalve1].nm;
-			p.total += p.pressure;
-			q.push(p);
+			lq.push(p);
+		}
+		
+		stack<path_state> llq;		// local-local queue to store ix1 and ix2 moves
+		while (!lq.empty() && ix2 >= 0)
+		{
+			path_state	v = lq.top();		//   (6)  v := Q.dequeue()  (back() - depth first search
+			lq.pop();
+			path_state  p = v;
+			ix2 = v.atvalve2;
+			if ( ix2 >= 0 && (g[ix2].flow > 0) && v.openvalves.find(g[ix2].nm) == string::npos) {
+				turn_on_valve(g, p, ix2);
+				llq.push(p);
+			}
+			for (int i = 0; i < (int) g[ix2].tunix.size(); i++)
+			{
+				p = v;		//   (6)  v := Q.dequeue()  (back() - depth first search
+				p.atvalve2 = g[ix2].tunix[i];
+				llq.push(p);
+			}
+		}
+		if (ix2 < 0) llq = lq;
 
+		while (!llq.empty())
+		{
+			path_state	v = llq.top();		//   (6)  v := Q.dequeue()  (back() - depth first search
+			llq.pop();
+			v.total += v.pressure;
+			v.minute++;
+			v.pressure += v.new_pressure;
+			v.new_pressure = 0;
+			q.push(v);
 		}
 
 		// it will add to the Q and mark explored
@@ -382,7 +568,22 @@ void solvept1(const char *fn, int answer)
 	
 	int maxp = dfsearch(volcano, 1, aa, 30);
 
-	printf("Total Flow: %d\n", maxp);
+	printf("Part 1: Total Flow: %d\n", maxp);
+	if (maxp == answer)
+		printf("Answer is correct!!!\n");
+	else
+		printf("Answer is not correct - should be %d\n", answer);
+}
+
+void solvept2(const char *fn, int answer)
+{
+	init(fn);
+	//output(volcano);
+	int aa = nm_index(volcano, "AA");
+	
+	int maxp = dfsearch(volcano, 2, aa, 26);
+
+	printf("Part 2:  Elephant and me total Flow: %d\n", maxp);
 	if (maxp == answer)
 		printf("Answer is correct!!!\n");
 	else
@@ -391,10 +592,14 @@ void solvept1(const char *fn, int answer)
 
 int main()
 {
-
+	graph_t g;
+	init("input.txt");
+	compress(volcano, g);
+	dump(g);
+	return 0;
+	solvept2("input.txt", 2548);
+	solvept2("ex.txt", 1707);
 	solvept1("ex.txt", 1651);
 	solvept1("input.txt", 1906);  // 1833 is too low!!  2544 is too high!!
-	return 0;
-	//solvept2("ex.txt", 1651);
 	return 0;
 }
