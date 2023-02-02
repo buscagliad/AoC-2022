@@ -61,6 +61,17 @@ void out(min_t &t)
 {
 	printf(" %d   Min: %d\n", t.flow, t.minutes);
 }
+
+typedef struct {
+	int		index;
+	int		minutes;
+} search_t;
+
+void out(search_t &t)
+{
+	printf("Index %d   Min: %d\n", t.index
+	, t.minutes);
+}
 #define GRAPH_SIZE 17
 
 typedef struct {
@@ -70,6 +81,14 @@ typedef struct {
 	int    minutes[GRAPH_SIZE][GRAPH_SIZE];
 } graph_t;	// this compressed graph will take vector<valve> --> vector<graph_t>
 
+
+int nm_index(graph_t g, string nm)
+{
+	for (int i = 0; i <  g.size; i++)
+	    if (g.nm[i] == nm) return i;
+	if (debug) printf("nm_index::  |%s| not found\n", nm.c_str());
+	return -1;
+}
 
 void dump(graph_t &g)
 {
@@ -90,6 +109,7 @@ void dump(graph_t &g)
 		}
 		printf("\n");
 	}
+	fflush(stdout);
 }
 
 void zerog(graph_t &g)
@@ -109,23 +129,25 @@ void zerog(graph_t &g)
 
 int	time2travel(vector<valve> &vv, graph_t &g, int from, int to)
 {
-	stack<min_t> st;
-	st.push({from, 0});
+	stack<search_t> st;
+	st.push({from, to});
 	int	mintime = vv.size();
 	while (!st.empty())
 	{
-		min_t tt = st.top();
+		search_t tt = st.top();
 		from = tt.index;
 		//printf("FROM: %d\n", from);
 		st.pop();
-		if (g[from][to].minutes > 0  &&
-		    g[from][to].minutes <= tt.minutes) continue;
+		if (g.minutes[from][to] > 0  &&
+		    g.minutes[from][to] <= tt.minutes) continue;
 		if (tt.minutes >= mintime) continue;
 		if (tt.index == to)
 		{
-			if (g[from][to].minutes < 0 || tt.minutes < g[from][to].minutes)
+			if (g.minutes[from][to] < 0 || tt.minutes < g.minutes[from][to])
 			{
-				g[from][to].minutes = tt.minutes;
+				g.minutes[from][to] = tt.minutes;
+				printf("Found %s to %s in %d minutes.\n", vv[from].tunnels[to].c_str(), 
+					vv[from].tunnels[to].c_str(), tt.minutes);
 				continue;
 			}
 		}
@@ -133,8 +155,7 @@ int	time2travel(vector<valve> &vv, graph_t &g, int from, int to)
 		for (int i = 0; i < (int) vv[from].tunix.size(); i++)
 		{
 			tt.index = vv[from].tunix[i];
-			tt.nm = vv[tt.index].nm;
-			//out(tt);
+			out(tt);
 			st.push(tt);
 		}
 	}
@@ -152,62 +173,42 @@ bool compress(vector<valve> &vv, graph_t &cg)
 	for (int from = 0; from < (int) vv.size(); from++)
 	{
 		if (vv[from].nm != "AA"  &&  vv[from].flow == 0) continue;
-		g.nm[cg.size] = vv[from].nm;
-		g.flow[cg.size] = vv[from].flow;
+		cg.nm[cg.size] = vv[from].nm;
+		cg.flow[cg.size] = vv[from].flow;
 		cg.size++;
 	}
+	dump(cg);
 	//
 	// go from each g.nm to each other g.nm within v
 	// to determine the shortest path
 	//
-	for (int from = 0; from < (int) g.size; from++)
+	for (int from = 0; from < (int) vv.size(); from++)
 	{
-		for (int to = 0; to < (int) g.size; to++)
+		for (int to = 0; to < (int) vv.size(); to++)
 		{
 			if (to == from) continue;
 			if (vv[to].flow == 0) continue;
-			min_t	m;
-			cg.nm = vv[to].nm;
-			g.minutes[gf][gt] = time2travel(vv, cg, from, to); //6; //
-			cg[from][to] = g;
+			gf = nm_index(cg, vv[from].nm);
+			gt = nm_index(cg, vv[to].nm);
+			if (gf < 0 || gt < 0) continue;
+			cg.minutes[gf][gt] = time2travel(vv, cg, from, to); //6; //
+			printf("gf: %d  gfn: %s  gt: %d  gtn: %s  min: %d\n",
+				gf, cg.nm[gf].c_str(), gt, cg.nm[gt].c_str(), cg.minutes[gf][gt]);
 		}
 	}
 	dump(cg);
 	//
 	// reorder indexes based on names
 	//
-	for (int i = 0; i < (int) graph_size; i++)
+	for (int i = 0; i < (int) cg.size; i++)
 	{
 		// find the cg index of each tunnel name
-		for (int j = 0; j < (int) graph_size; j++)
+		for (int j = 0; j < (int) cg.size; j++)
 		{
 
 		}
 	}
 	return true;
-}
-
-#ifdef SSSSS
-
-typedef struct {
-	long 	flow;
-	int		minutes;
-} min_t;	// this structure will create a graph of ONLY flow positive valves, and the 
-			// minimum time to get to this valve from any other of the valves
-
-typedef struct {
-	string nm[GRAPH_SIZE];
-	int	  size;
-	min_t tunnels[GRAPH_SIZE][GRAPH_SIZE];
-} graph_t;	// this compressed graph will take vector<valve> --> vector<graph_t>
-#endif
-
-int nm_index(graph_t g, string nm)
-{
-	for (int i = 0; i <  g.size; i++)
-	    if (g.nm[i] == nm) return i;
-	if (debug) printf("nm_index::  |%s| not found\n", nm.c_str());
-	return -1;
 }
 
 
@@ -334,7 +335,7 @@ void getchars(char *inp, char *nm, int num)
 	*nm = 0;
 }
 
-void init(const char *fn)
+void init(const char *fn, graph_t &g)
 {
 	FILE *f = fopen(fn, "r");
 	char inl[100];
@@ -382,7 +383,7 @@ void init(const char *fn)
 	}
 	fclose(f);
 	spaths.clear();
-	zerog();
+	zerog(g);
 }
 
 void output(vector<valve> &v)
@@ -562,7 +563,8 @@ int dfsearch(vector<valve> &g, int num_bots, int start_index, int max_time)
 
 void solvept1(const char *fn, int answer)
 {
-	init(fn);
+	graph_t g;
+	init(fn, g);
 	//output(volcano);
 	int aa = nm_index(volcano, "AA");
 	
@@ -577,7 +579,8 @@ void solvept1(const char *fn, int answer)
 
 void solvept2(const char *fn, int answer)
 {
-	init(fn);
+	graph_t g;
+	init(fn, g);
 	//output(volcano);
 	int aa = nm_index(volcano, "AA");
 	
@@ -593,7 +596,7 @@ void solvept2(const char *fn, int answer)
 int main()
 {
 	graph_t g;
-	init("input.txt");
+	init("ex.txt", g);
 	compress(volcano, g);
 	dump(g);
 	return 0;
