@@ -20,18 +20,6 @@ int debug = DEBUG;
 int MinutesToRun = MAX_MINUTE;
 
 
-typedef struct path_s {
-	int 		minute;
-	string 		openvalves;
-	int			atvalve1;
-	int			atvalve2;
-	int			pressure;
-	int			new_pressure;
-	int			total;
-	int			valves_left_to_open;
-	int			flows_remaining[MAX_FLOW];	// index of positive flow valves
-} path_state;
-
 typedef struct valve_s {
 	int index;
 	string nm;
@@ -44,23 +32,7 @@ typedef struct valve_s {
 
 vector<valve> volcano;
 
-// need to update these two functions 
-// has the state into a unit32_t and insert into an
-// ordered list - set_explored
-// for explored, hash the state, search for it, if found, return true
 
-std::set<uint64_t> spaths;	// search paths
-
-typedef struct {
-	int 	flow;
-	int		minutes;
-} min_t;	// this structure will create a graph of ONLY flow positive valves, and the 
-			// minimum time to get to this valve from any other of the valves
-
-void out(min_t &t)
-{
-	printf(" %d   Min: %d\n", t.flow, t.minutes);
-}
 
 typedef struct {
 	string		path;
@@ -216,22 +188,26 @@ bool compress(vector<valve> &vv, graph_t &cg, bool debug = false)
 	return true;
 }
 
+typedef struct {	
+	int	index;
+	int minutes;
+} path_state;
+
 typedef struct {
 	string path;
-	int	index;
 	int	flow;
-	int minutes;
 	int visited;
+	path_state ps;
 } maxflow_t;
 
 void out(maxflow_t &t)
 {
-	printf("path: %s   flow: %d   minute: %d\n", t.path.c_str(), t.flow, t.minutes);
+	printf("path: %s   flow: %d   minute: %d\n", t.path.c_str(), t.flow, t.ps.minutes);
 }
 
-#define ADD_PATH(V, n)	V.path += g.nm[n] + "[" + to_string(V.minutes) + "] "
-#define ADD_FLOW(V, n)	V.flow += (max_minutes - V.minutes) * g.flow[n]
-#define ADD_MINUTES(V, f, t)	V.minutes += g.minutes[f][t] + 1;
+#define ADD_PATH(V, n)	V.path += g.nm[n] + "[" + to_string(V.ps.minutes) + "] "
+#define ADD_FLOW(V, n)	V.flow += (max_minutes - V.ps.minutes) * g.flow[n]
+#define ADD_MINUTES(V, f, t)	V.ps.minutes += g.minutes[f][t] + 1;
 #define ALL_VISITED(n, v)	
 
 int maxflow(graph_t &g, int max_minutes, bool debug = false)
@@ -245,14 +221,14 @@ int maxflow(graph_t &g, int max_minutes, bool debug = false)
 	{
 		if (i == aa) continue;
 		maxflow_t tt;
-		tt.path = "AA[0] ";
+		if (debug) tt.path = "AA[0] ";
 		tt.visited = 0;
 		tt.flow = 0;
-		tt.index = i;
-		tt.minutes = 0;
+		tt.ps.index = i;
+		tt.ps.minutes = 0;
 		ADD_MINUTES(tt, aa, i);
 		ADD_FLOW(tt, i);
-		ADD_PATH(tt, i);
+		if (debug) ADD_PATH(tt, i);
 		SET_BIT(tt.visited, i);
 		SET_BIT(tt.visited, aa);
 		st.push(tt);
@@ -268,28 +244,28 @@ int maxflow(graph_t &g, int max_minutes, bool debug = false)
 			maxflow_t xt = tt;
 			if (xt.visited == all_visited)
 			{
-				xt.minutes = max_minutes;
+				xt.ps.minutes = max_minutes;
 			}
 			else if (IS_BIT(xt.visited, i))
 			{
 				continue;
 			}
-			else if (xt.minutes + g.minutes[xt.index][i] <= max_minutes)
+			else if (xt.ps.minutes + g.minutes[xt.ps.index][i] <= max_minutes)
 			{
-				ADD_MINUTES(xt, xt.index, i);
+				ADD_MINUTES(xt, xt.ps.index, i);
 				ADD_FLOW(xt, i);
-				ADD_PATH(xt, i);
+				if (debug) ADD_PATH(xt, i);
 				SET_BIT(xt.visited, i);
-				xt.index = i;
+				xt.ps.index = i;
 				if (debug) { printf("Q size: %ld  ", st.size()); out(xt); }
 			}
-			else xt.minutes = max_minutes;
-			if (xt.minutes >= max_minutes)
+			else xt.ps.minutes = max_minutes;
+			if (xt.ps.minutes >= max_minutes)
 			{
 				if (xt.flow > max_flow)
 				{
 					max_flow = xt.flow;
-					if (debug) printf("Q: %ld Found solution at %d  flow is: %d\n", st.size(), xt.minutes, xt.flow);
+					if (debug) printf("Q: %ld Found solution at %d  flow is: %d\n", st.size(), xt.ps.minutes, xt.flow);
 					if (debug) out(xt);
 					fflush(stdout);
 				}
@@ -301,24 +277,6 @@ int maxflow(graph_t &g, int max_minutes, bool debug = false)
 	return max_flow;
 }
 
-
-int max_remaining(vector<valve> &v, path_state &p)
-{
-	//if (p.atvalve2 < 0) return 1000000;
-	int maxP = p.total;
-	int curP = p.pressure;
-	int i = -1;
-	for (int m = p.minute+1; m <= MinutesToRun; m++)
-	{
-		if (i < p.valves_left_to_open - 1) {
-			i++;
-			curP += p.flows_remaining[i];
-		}
-		maxP += curP;
-	}
-
-	return maxP;
-}
 
 int nm_index(vector<valve> &v, string nm)
 {
@@ -382,7 +340,6 @@ void init(const char *fn, graph_t &g)
 		}
 	}
 	fclose(f);
-	spaths.clear();
 	zerog(g);
 }
 
