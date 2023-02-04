@@ -63,14 +63,15 @@ void out(min_t &t)
 }
 
 typedef struct {
-	int		index;
-	int		minutes;
+	string		path;
+	int			index;
+	int			minutes;
+	uint64_t 	visited;
 } search_t;
 
 void out(search_t &t)
 {
-	printf("Index %d   Min: %d\n", t.index
-	, t.minutes);
+	printf("Path %s   Min: %d\n", t.path.c_str(), t.minutes);
 }
 #define GRAPH_SIZE 17
 
@@ -126,43 +127,56 @@ void zerog(graph_t &g)
 	}
 }
 
+#define SET_BIT(u, n)	u |= 1UL << n
+#define IS_BIT(u, n)	u & (1UL << n)
 
-int	time2travel(vector<valve> &vv, graph_t &g, int from, int to)
+int	time2travel(vector<valve> &vv, int ofrom, int to, bool debug = false)
 {
-	stack<search_t> st;
-	st.push({from, to});
-	int	mintime = vv.size();
+	queue<search_t> st;
+	if (debug) printf("\n\nTime 2 Travel from %s to %s\n", vv[ofrom].nm.c_str(),  vv[to].nm.c_str());
+	
+	for (int i = 0; i < (int) vv[ofrom].tunix.size(); i++)
+	{
+		search_t tt;
+		tt.visited = 0;
+		tt.index = vv[ofrom].tunix[i];
+		tt.minutes = 1;
+		if (tt.index == to) return tt.minutes;
+		SET_BIT(tt.visited, ofrom);
+		SET_BIT(tt.visited, tt.index);
+		tt.path = vv[ofrom].nm;
+		tt.path += " " + vv[tt.index].nm;
+		if (debug) out(tt);
+		st.push(tt);
+	}
 	while (!st.empty())
 	{
-		search_t tt = st.top();
-		from = tt.index;
-		//printf("FROM: %d\n", from);
+		search_t tt = st.front();
+		int from = tt.index;
 		st.pop();
-		if (g.minutes[from][to] > 0  &&
-		    g.minutes[from][to] <= tt.minutes) continue;
-		if (tt.minutes >= mintime) continue;
 		if (tt.index == to)
 		{
-			if (g.minutes[from][to] < 0 || tt.minutes < g.minutes[from][to])
-			{
-				g.minutes[from][to] = tt.minutes;
-				printf("Found %s to %s in %d minutes.\n", vv[from].tunnels[to].c_str(), 
-					vv[from].tunnels[to].c_str(), tt.minutes);
-				continue;
-			}
-		}
-		tt.minutes++;
+			if (debug) printf("Found %s to %s in %d minutes - Q: %d.\n", vv[ofrom].nm.c_str(), vv[to].nm.c_str(), tt.minutes, (int) st.size());
+			return tt.minutes;
+		}			
+
 		for (int i = 0; i < (int) vv[from].tunix.size(); i++)
 		{
-			tt.index = vv[from].tunix[i];
-			out(tt);
-			st.push(tt);
+			search_t xt = tt;
+			xt.minutes++;
+			xt.path += " " + vv[vv[from].tunix[i]].nm;
+			xt.index = vv[from].tunix[i];
+			if (IS_BIT(xt.visited, xt.index)) continue;
+			SET_BIT(xt.visited, xt.index);
+			if (debug) out(xt);
+			
+			st.push(xt);
 		}
 	}
-	return mintime;
+	return -1;
 }
 
-bool compress(vector<valve> &vv, graph_t &cg)
+bool compress(vector<valve> &vv, graph_t &cg, bool debug = false)
 {
 	//
 	// fill in flow and 'AA'
@@ -177,7 +191,7 @@ bool compress(vector<valve> &vv, graph_t &cg)
 		cg.flow[cg.size] = vv[from].flow;
 		cg.size++;
 	}
-	dump(cg);
+
 	//
 	// go from each g.nm to each other g.nm within v
 	// to determine the shortest path
@@ -190,41 +204,103 @@ bool compress(vector<valve> &vv, graph_t &cg)
 			if (vv[to].flow == 0) continue;
 			gf = nm_index(cg, vv[from].nm);
 			gt = nm_index(cg, vv[to].nm);
-			if (gf < 0 || gt < 0) continue;
-			cg.minutes[gf][gt] = time2travel(vv, cg, from, to); //6; //
-			printf("gf: %d  gfn: %s  gt: %d  gtn: %s  min: %d\n",
+			if (gf < 0 || gt < 0) { if (debug) printf("gf: %d  gt: %d  from: %d  to: %d\n", gf, gt, from, to);
+				continue; }
+			cg.minutes[gf][gt] = time2travel(vv, from, to, debug); //6; //
+			if (debug) printf("gf: %d  gfn: %s  gt: %d  gtn: %s  min: %d\n",
 				gf, cg.nm[gf].c_str(), gt, cg.nm[gt].c_str(), cg.minutes[gf][gt]);
 		}
 	}
-	dump(cg);
-	//
-	// reorder indexes based on names
-	//
-	for (int i = 0; i < (int) cg.size; i++)
-	{
-		// find the cg index of each tunnel name
-		for (int j = 0; j < (int) cg.size; j++)
-		{
 
-		}
-	}
+
 	return true;
 }
 
+typedef struct {
+	string path;
+	int	index;
+	int	flow;
+	int minutes;
+	int visited;
+} maxflow_t;
 
-bool zvalue(path_state &p, int v)
+void out(maxflow_t &t)
 {
-	for (int i = 0; i < p.valves_left_to_open; i++)
+	printf("path: %s   flow: %d   minute: %d\n", t.path.c_str(), t.flow, t.minutes);
+}
+
+#define ADD_PATH(V, n)	V.path += g.nm[n] + "[" + to_string(V.minutes) + "] "
+#define ADD_FLOW(V, n)	V.flow += (max_minutes - V.minutes) * g.flow[n]
+#define ADD_MINUTES(V, f, t)	V.minutes += g.minutes[f][t] + 1;
+#define ALL_VISITED(n, v)	
+
+int maxflow(graph_t &g, int max_minutes, bool debug = false)
+{
+	if (debug) dump(g);
+	int	aa = nm_index(g, "AA");
+	queue<maxflow_t> st;
+	int max_flow = 0;
+	int	all_visited = (1 << g.size) - 1;
+	for (int i = 0; i < (int) g.size; i++)
 	{
-		if (p.flows_remaining[i] == v) { 
-			for (int j = i; j < p.valves_left_to_open-1; j++)
-				p.flows_remaining[j] = p.flows_remaining[j+1];
-			p.flows_remaining[p.valves_left_to_open-1] = 0;
-			return true;
+		if (i == aa) continue;
+		maxflow_t tt;
+		tt.path = "AA[0] ";
+		tt.visited = 0;
+		tt.flow = 0;
+		tt.index = i;
+		tt.minutes = 0;
+		ADD_MINUTES(tt, aa, i);
+		ADD_FLOW(tt, i);
+		ADD_PATH(tt, i);
+		SET_BIT(tt.visited, i);
+		SET_BIT(tt.visited, aa);
+		st.push(tt);
+		if (debug) { printf("Q size: %ld  ", st.size()); out(tt); }
+	}
+	while (!st.empty())
+	{
+		maxflow_t tt = st.front();
+		
+		st.pop();
+		for (int i = 0; i < g.size; i++)
+		{
+			maxflow_t xt = tt;
+			if (xt.visited == all_visited)
+			{
+				xt.minutes = max_minutes;
+			}
+			else if (IS_BIT(xt.visited, i))
+			{
+				continue;
+			}
+			else if (xt.minutes + g.minutes[xt.index][i] <= max_minutes)
+			{
+				ADD_MINUTES(xt, xt.index, i);
+				ADD_FLOW(xt, i);
+				ADD_PATH(xt, i);
+				SET_BIT(xt.visited, i);
+				xt.index = i;
+				if (debug) { printf("Q size: %ld  ", st.size()); out(xt); }
+			}
+			else xt.minutes = max_minutes;
+			if (xt.minutes >= max_minutes)
+			{
+				if (xt.flow > max_flow)
+				{
+					max_flow = xt.flow;
+					if (debug) printf("Q: %ld Found solution at %d  flow is: %d\n", st.size(), xt.minutes, xt.flow);
+					if (debug) out(xt);
+					fflush(stdout);
+				}
+				continue;
+			}
+			st.push(xt);
 		}
 	}
-	return false;
+	return max_flow;
 }
+
 
 int max_remaining(vector<valve> &v, path_state &p)
 {
@@ -244,88 +320,12 @@ int max_remaining(vector<valve> &v, path_state &p)
 	return maxP;
 }
 
-
-bool bigger (int a, int b) { return a > b; }
-
-
-void setflows(vector<valve> &v, path_state &p)
-{
-	int k = 0;
-	for (size_t i = 0; i < v.size(); i++)
-	    if (v[i].flow > 0) p.flows_remaining[k++] = v[i].flow;
-	std::sort(p.flows_remaining, p.flows_remaining + k, bigger);
-	p.valves_left_to_open = k;
-	//for (int i = 0; i < p.valves_left_to_open; i++)
-	//    printf("Flow: %d   %d\n", i, p.flows_remaining[i]);
-}
-
-int numGTzero(vector<valve> f)
-{
-	int count = 0;
-	for (size_t i = 0; i < f.size(); i++)
-	{
-		if (f[i].flow > 0) count++;
-	}
-	return count;
-}
-	
-
-void outps(path_state &p)
-{
-	printf("\nMinute: %d\n", p.minute);
-	printf("Open Values: %s\n", p.openvalves.c_str());
-	printf("Minute pressure: %d\n", p.pressure);
-	printf("Total pressure: %d\n", p.total);
-}
-
-valve get(string nm)
-{
-	for (size_t i = 0; i < volcano.size(); i++)
-	    if (volcano[i].nm == nm) return volcano[i];
-	if (debug) printf("%s not found\n", nm.c_str());
-	return volcano[0];
-}
-
-
-
 int nm_index(vector<valve> &v, string nm)
 {
 	for (size_t i = 0; i < v.size(); i++)
 	    if (v[i].nm == nm) return i;
 	if (debug) printf("nm_index::  |%s| not found\n", nm.c_str());
 	return -1;
-}
-
-//
-// getix returns the index into vector<valve> whose name matches to_str
-//
-int getix(vector<valve> &v, int from, string to_str)
-{
-	// if v[from].nm int v[to].nm list, remove it from v[to]'s list
-	int to = nm_index(v, to_str);
-	return to;
-}	
-
-int pressure(path_state &p)
-{
-	return p.total;
-}
-
-bool turn_on_valve(vector<valve> &v, path_state &ps, int ix, bool debug = false)
-{
-	//if (ps.minute >= MinutesToRun) return;
-	if (debug) printf("Minute: %d turn_on_valve: %s    open: %s\n", ps.minute, v[ix].nm.c_str(), ps.openvalves.c_str());
-
-	ps.openvalves += " " + v[ix].nm;
-	//ps.path += " ^" + v[ix].nm;
-	ps.valves_left_to_open--;
-	//ps.pressure += v[ix].flow;	
-	ps.new_pressure += v[ix].flow;
-	zvalue(ps, v[ix].flow);
-	
-	if (debug) printf("Open: %s  Turning on valve At %s flow: %ld  minute: %d  total: %d\n", 
-		ps.openvalves.c_str(), v[ix].nm.c_str(), v[ix].flow, ps.minute, ps.total);
-    return true;
 }
 
 
@@ -405,170 +405,14 @@ void output(vector<valve> &v)
 
 
 
-uint64_t hash_path(path_state &p)
-{
-	uint64_t	rv = 0;
-	rv = rv << 8 | (0xFF & p.atvalve1);
-	rv = rv << 8 | (0xFF & p.atvalve2);
-	rv = rv << 16 | (0xFFFF & p.pressure);
-	rv = rv << 16 | (0xFFFF & p.total);
-	rv = rv << 16 | (0xFFFF & p.minute);
-	if (debug) printf("HP:%lx v1:%d  v2:%d  p:%d  t:%d  m:%d\n",  rv, p.atvalve1, 
-		p.atvalve2, p.pressure, p.total, p.minute);
-	return rv;
-}
-
-bool explored(path_state &p)
-{
-	uint64_t hp = hash_path(p);
-	if (spaths.count(hp)) {
-		if (debug) printf("FOUND::  %16.16lx\n", hp);
-		return true; 
-	}
-	if (debug) printf("NEW::  %16.16lx\n", hp);
-	return false;
-}
-
-void set_explored(path_state &p)
-{
-	uint64_t hp = hash_path(p);
-	if (debug) printf("ADDING::  %16.16lx\n", hp);
-	spaths.insert(hp);
-}
-
-//
-// https://en.wikipedia.org/wiki/Breadth-first_search
-//    tried depth first search, but in drilled down too fast and did not
-//    seem to come back to find better solutions
-//  procedure BFS(G, root) is
-//   2      let Q be a queue
-//   3      label root as explored
-//   4      Q.enqueue(root)
-//   5      while Q is not empty do
-//   6          v := Q.dequeue()
-//   7          if v is the goal then
-//   8              return v
-//   9          for all edges from v to w in G.adjacentEdges(v) do
-//  10              if w is not labeled as explored then
-//  11                  label w as explored
-//  12                  w.parent := v
-//  13                  Q.enqueue(w)
-int dfsearch(vector<valve> &g, int num_bots, int start_index, int max_time)
-{
-	stack<path_state> q;		// (2) q will be our q for searching
-// (3) create 1 or two roots (num_bots)
-	path_state ps;
-	ps.minute = 0;
-	ps.pressure = 0;
-	ps.new_pressure = 0;
-	ps.total = 0;
-	ps.atvalve1 = start_index;
-	setflows(g, ps);
-	
-	if (num_bots > 1)
-		ps.atvalve2 = start_index;
-	else
-		ps.atvalve2 = -1;
-	ps.valves_left_to_open = numGTzero(volcano);
-	int max_total = 0;
-
-// (4) add root to q
-	
-	q.push(ps); 
-	while (!q.empty())	// (5) while Q is not empty do
-	{
-		path_state	v = q.top();		//   (6)  v := Q.dequeue()  (back() - depth first search
-		q.pop();
-
-		//   (7) if v is the goal then return v (8)
-		// NEED TO LIMIT TIME - say bs.xpts * bs.ypts maximum
-		if (v.minute >= max_time)
-		{
-			if (v.total > max_total) {
-				max_total = v.total;
-				//printf("Minute: %d  Total: %d\n", v.minute, v.total);
-				outps(v);
-				fflush(stdout);
-			}
-			continue;
-		}
-		// Check if pos_t has been 'explored', if so, continue
-		if (max_remaining(g, v) <= max_total) continue;
-		if (explored(v)) {
-			continue;
-		}
-		set_explored(v);
-//
-//   9          for all edges from v to w in G.adjacentEdges(v) do
-//
-
-
-		stack<path_state> lq;		// local queue to store ix1 and ix2 moves
-		int ix1 = v.atvalve1;
-		int ix2 = v.atvalve2;
-		path_state	p = v;		//   (6)  v := Q.dequeue()  (back() - depth first search
-		if ( (g[ix1].flow > 0) && v.openvalves.find(g[ix1].nm) == string::npos) {
-			turn_on_valve(g, p, ix1);
-		}
-		lq.push(p);
-		for (int i = 0; i < (int) g[ix1].tunix.size(); i++)
-		{
-			p = v;		//   (6)  v := Q.dequeue()  (back() - depth first search
-			p.atvalve1 = g[ix1].tunix[i];
-			lq.push(p);
-		}
-		
-		stack<path_state> llq;		// local-local queue to store ix1 and ix2 moves
-		while (!lq.empty() && ix2 >= 0)
-		{
-			path_state	v = lq.top();		//   (6)  v := Q.dequeue()  (back() - depth first search
-			lq.pop();
-			path_state  p = v;
-			ix2 = v.atvalve2;
-			if ( ix2 >= 0 && (g[ix2].flow > 0) && v.openvalves.find(g[ix2].nm) == string::npos) {
-				turn_on_valve(g, p, ix2);
-				llq.push(p);
-			}
-			for (int i = 0; i < (int) g[ix2].tunix.size(); i++)
-			{
-				p = v;		//   (6)  v := Q.dequeue()  (back() - depth first search
-				p.atvalve2 = g[ix2].tunix[i];
-				llq.push(p);
-			}
-		}
-		if (ix2 < 0) llq = lq;
-
-		while (!llq.empty())
-		{
-			path_state	v = llq.top();		//   (6)  v := Q.dequeue()  (back() - depth first search
-			llq.pop();
-			v.total += v.pressure;
-			v.minute++;
-			v.pressure += v.new_pressure;
-			v.new_pressure = 0;
-			q.push(v);
-		}
-
-		// it will add to the Q and mark explored
-//  10              if w is not labeled as explored then
-//  11                  label w as explored
-//  12                  w.parent := v	// NOT NEEDED
-//  13                  Q.enqueue(w)
-
-	}
-	return max_total;
-}
-
-
 
 void solvept1(const char *fn, int answer)
 {
 	graph_t g;
 	init(fn, g);
-	//output(volcano);
-	int aa = nm_index(volcano, "AA");
-	
-	int maxp = dfsearch(volcano, 1, aa, 30);
+	compress(volcano, g);
+	int maxp = maxflow(g, 30);
+	printf("Flow %d\n", maxp);
 
 	printf("Part 1: Total Flow: %d\n", maxp);
 	if (maxp == answer)
@@ -581,10 +425,8 @@ void solvept2(const char *fn, int answer)
 {
 	graph_t g;
 	init(fn, g);
-	//output(volcano);
-	int aa = nm_index(volcano, "AA");
-	
-	int maxp = dfsearch(volcano, 2, aa, 26);
+	//output(volcano);	
+	int maxp = 0;
 
 	printf("Part 2:  Elephant and me total Flow: %d\n", maxp);
 	if (maxp == answer)
@@ -595,10 +437,9 @@ void solvept2(const char *fn, int answer)
 
 int main()
 {
-	graph_t g;
-	init("ex.txt", g);
-	compress(volcano, g);
-	dump(g);
+	solvept1("ex.txt", 1651);
+	solvept1("input.txt", 1906);  // 1833 is too low!!  2544 is too high!!
+	
 	return 0;
 	solvept2("input.txt", 2548);
 	solvept2("ex.txt", 1707);
